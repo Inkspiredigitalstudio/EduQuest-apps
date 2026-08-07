@@ -14,7 +14,6 @@ export interface UserProfile {
   linked_user_id?: string;
   school_name?: string;
   team_id?: string;
-  is_approved_admin?: boolean;
 }
 
 export interface Subject {
@@ -56,6 +55,7 @@ export interface Question {
   explanation: string;
   order: number;
   choices: Choice[];
+  difficulty?: 'mudah' | 'sederhana' | 'sukar';
 }
 
 export interface UserProgress {
@@ -110,7 +110,7 @@ export interface StudentLink {
   id: string;
   observer_id: string;
   observer_name: string;
-  observer_role: 'parent' | 'admin';
+  observer_role: 'parent';
   student_id: string;
   student_name?: string;
   student_invite_code: string;
