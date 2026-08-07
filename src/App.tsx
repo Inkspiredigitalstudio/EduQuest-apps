@@ -29,7 +29,7 @@ import { ExamScreen } from './components/ExamScreen';
 import { ResultScreen } from './components/ResultScreen';
 import { ProfileModal } from './components/ProfileModal';
 import { ParentDashboard } from './components/ParentDashboard';
-import { AdminCMS } from './components/AdminCMS';
+import { AdminDashboard } from './components/AdminDashboard';
 
 // New Milestone Modals
 import { RoleSelectionModal } from './features/auth/RoleSelectionModal';
@@ -37,11 +37,32 @@ import { BattleLobbyModal } from './features/dashboard/BattleLobbyModal';
 import { AchievementsModal } from './features/profile/AchievementsModal';
 import { SocialAndLeaderboardModal } from './features/dashboard/SocialAndLeaderboardModal';
 
+const THEME_STORAGE_KEY = 'eduquest_theme';
+
 export default function App() {
   const [user, setUser] = useState<UserProfile | null>(() => getCurrentUser());
   const [isMuted, setIsMuted] = useState(false);
 
-  // View state
+  // Light / Dark theme — class-based (toggle-controlled), persisted, defaults to system preference
+  const [isDarkMode, setIsDarkMode] = useState<boolean>(() => {
+    if (typeof window === 'undefined') return false;
+    const saved = window.localStorage.getItem(THEME_STORAGE_KEY);
+    if (saved === 'dark') return true;
+    if (saved === 'light') return false;
+    return Boolean(window.matchMedia && window.matchMedia('(prefers-color-scheme: dark)').matches);
+  });
+
+  useEffect(() => {
+    document.documentElement.classList.toggle('dark', isDarkMode);
+    window.localStorage.setItem(THEME_STORAGE_KEY, isDarkMode ? 'dark' : 'light');
+  }, [isDarkMode]);
+
+  const handleToggleDarkMode = () => {
+    soundManager.playClick();
+    setIsDarkMode((prev) => !prev);
+  };
+
+  // View state (Student flow only — Parent & Admin each have their own dedicated full-page view)
   const [view, setView] = useState<'dashboard' | 'subject' | 'exam' | 'result'>('dashboard');
   const [activeNavTab, setActiveNavTab] = useState<'home' | 'battle' | 'achievements' | 'leaderboard' | 'profile'>('home');
 
@@ -50,33 +71,13 @@ export default function App() {
     if (tab === 'home') {
       setView('dashboard');
     } else if (tab === 'battle') {
-      if (user) {
-        setIsBattleOpen(true);
-      } else {
-        setIsAuthOpen(true);
-      }
+      user ? setIsBattleOpen(true) : setIsAuthOpen(true);
     } else if (tab === 'achievements') {
-      if (user) {
-        setIsAchievementsOpen(true);
-      } else {
-        setIsAuthOpen(true);
-      }
+      user ? setIsAchievementsOpen(true) : setIsAuthOpen(true);
     } else if (tab === 'leaderboard') {
-      if (user) {
-        setIsSocialOpen(true);
-      } else {
-        setIsAuthOpen(true);
-      }
+      user ? setIsSocialOpen(true) : setIsAuthOpen(true);
     } else if (tab === 'profile') {
-      if (user) {
-        if (user.role === 'parent') {
-          setIsParentOpen(true);
-        } else {
-          setIsProfileOpen(true);
-        }
-      } else {
-        setIsAuthOpen(true);
-      }
+      user ? setIsProfileOpen(true) : setIsAuthOpen(true);
     }
   };
 
@@ -102,11 +103,9 @@ export default function App() {
   const [dailyMissions, setDailyMissions] = useState<DailyMission[]>(DEFAULT_DAILY_MISSIONS);
   const [userProgress, setUserProgress] = useState<UserProgress[]>([]);
 
-  // Modals
+  // Modals (Student flow)
   const [isAuthOpen, setIsAuthOpen] = useState(false);
   const [isProfileOpen, setIsProfileOpen] = useState(false);
-  const [isParentOpen, setIsParentOpen] = useState(false);
-  const [isAdminOpen, setIsAdminOpen] = useState(false);
 
   // New Milestone Feature Modals
   const [isRoleSelectionOpen, setIsRoleSelectionOpen] = useState(false);
@@ -119,9 +118,7 @@ export default function App() {
     async function initSession() {
       if (!user) {
         const restored = await checkAndRestoreSession();
-        if (restored) {
-          setUser(restored);
-        }
+        if (restored) setUser(restored);
       }
     }
     initSession();
@@ -174,11 +171,10 @@ export default function App() {
     loadRemoteContent();
   }, []);
 
-  // Load user progress
+  // Load user progress (Student's own progress — not used by Parent/Admin views)
   useEffect(() => {
     if (user) {
-      const prog = getUserProgressList(user.id);
-      setUserProgress(prog);
+      setUserProgress(getUserProgressList(user.id));
     } else {
       setUserProgress([]);
     }
@@ -214,7 +210,6 @@ export default function App() {
   ) => {
     if (!activeSection || !user) return;
 
-    // 1. Save attempt record
     await saveAttempt({
       user_id: user.id,
       section_id: activeSection.id,
@@ -226,38 +221,45 @@ export default function App() {
       completed_at: new Date().toISOString(),
     });
 
-    // 2. Update user stats
     const updatedUser = await updateUserStats(user, coinsEarned, xpEarned);
     setUser(updatedUser);
 
-    // 3. Refresh user progress
-    const updatedProg = getUserProgressList(user.id);
-    setUserProgress(updatedProg);
+    setUserProgress(getUserProgressList(user.id));
 
-    // 4. Update daily mission progress
     setDailyMissions((prev) =>
       prev.map((m) => {
-        if (m.id === 'm-1') {
-          return { ...m, current: Math.min(m.target, m.current + 1), is_completed: true };
-        }
+        if (m.id === 'm-1') return { ...m, current: Math.min(m.target, m.current + 1), is_completed: true };
         if (m.id === 'm-2' && activeSubject?.id === 'sub-fekah') {
           const newCurr = m.current + score;
           return { ...m, current: newCurr, is_completed: newCurr >= m.target };
         }
-        if (m.id === 'm-3' && score === total) {
-          return { ...m, current: 1, is_completed: true };
-        }
+        if (m.id === 'm-3' && score === total) return { ...m, current: 1, is_completed: true };
         return m;
       })
     );
 
-    // 5. Store result & change view
     setLastExamResult({ score, total, coinsEarned, xpEarned, answersMap });
     setView('result');
   };
 
+  // ------------------------- Admin question-bank management -------------------------
+  // Local-state only, matching how this app already handles the question bank
+  // (subjects/papers/sections/questions are seeded + optionally pulled from
+  // Supabase read-only; there is no write-sync path back to Supabase here).
   const handleAddQuestion = (newQ: Question) => {
     setQuestions((prev) => [newQ, ...prev]);
+  };
+
+  const handleUpdateQuestion = (updatedQ: Question) => {
+    setQuestions((prev) => prev.map((q) => (q.id === updatedQ.id ? updatedQ : q)));
+  };
+
+  const handleDeleteQuestion = (questionId: string) => {
+    setQuestions((prev) => prev.filter((q) => q.id !== questionId));
+  };
+
+  const handleBulkAddQuestions = (newQuestions: Question[]) => {
+    setQuestions((prev) => [...newQuestions, ...prev]);
   };
 
   const handleLogout = () => {
@@ -266,29 +268,61 @@ export default function App() {
     setView('dashboard');
   };
 
-  const activeQuestions = activeSection
-    ? questions.filter((q) => q.section_id === activeSection.id)
-    : [];
+  const activeQuestions = activeSection ? questions.filter((q) => q.section_id === activeSection.id) : [];
+
+  // ---------------------------------------------------------------------
+  // ROLE-BASED TOP-LEVEL ROUTING
+  // Parent and Admin accounts each get a completely separate, dedicated
+  // full-page view — gated purely by user.role, so a student can never
+  // reach either one. (Client-side gating only — see chat notes on the
+  // limits of that for a locally-stored-auth app like this one.)
+  // ---------------------------------------------------------------------
+  if (user && user.role === 'parent') {
+    return (
+      <ParentDashboard
+        user={user}
+        subjects={subjects}
+        papers={papers}
+        sections={sections}
+        onLogout={handleLogout}
+        isDarkMode={isDarkMode}
+        onToggleDarkMode={handleToggleDarkMode}
+      />
+    );
+  }
+
+  if (user && user.role === 'admin') {
+    return (
+      <AdminDashboard
+        user={user}
+        subjects={subjects}
+        papers={papers}
+        sections={sections}
+        questions={questions}
+        onAddQuestion={handleAddQuestion}
+        onUpdateQuestion={handleUpdateQuestion}
+        onDeleteQuestion={handleDeleteQuestion}
+        onBulkAddQuestions={handleBulkAddQuestions}
+        onLogout={handleLogout}
+        isDarkMode={isDarkMode}
+        onToggleDarkMode={handleToggleDarkMode}
+      />
+    );
+  }
 
   return (
-    <div className="min-h-screen bg-slate-950 text-slate-100 font-sans antialiased flex flex-col">
+    <div className="min-h-screen bg-cream-100 text-ink-900 font-sans antialiased flex flex-col">
       {/* Top Navigation Bar */}
       <Header
         user={user}
         isMuted={isMuted}
         onToggleMute={handleToggleMute}
         onOpenAuth={() => setIsAuthOpen(true)}
-        onOpenProfile={() => {
-          if (user?.role === 'parent') {
-            setIsParentOpen(true);
-          } else {
-            setIsProfileOpen(true);
-          }
-        }}
-        onOpenParent={() => setIsParentOpen(true)}
-        onOpenAdmin={() => setIsAdminOpen(true)}
+        onOpenProfile={() => setIsProfileOpen(true)}
         onLogout={handleLogout}
         onGoHome={() => setView('dashboard')}
+        isDarkMode={isDarkMode}
+        onToggleDarkMode={handleToggleDarkMode}
       />
 
       {/* Main App Content View Switcher */}
@@ -305,7 +339,6 @@ export default function App() {
             onSelectSection={handleSelectSection}
             onOpenAuth={() => setIsAuthOpen(true)}
             onOpenProfile={() => setIsProfileOpen(true)}
-            onOpenParent={() => setIsParentOpen(true)}
             onOpenBattle={() => setIsBattleOpen(true)}
             onOpenAchievements={() => setIsAchievementsOpen(true)}
             onOpenSocial={() => setIsSocialOpen(true)}
@@ -358,7 +391,7 @@ export default function App() {
         )}
       </main>
 
-      {/* Fixed Bottom Navigation Bar (Modern Mobile Gaming Style) */}
+      {/* Fixed Bottom Navigation Bar */}
       <BottomNav
         activeTab={view === 'dashboard' ? activeNavTab : 'home'}
         user={user}
@@ -366,10 +399,10 @@ export default function App() {
       />
 
       {/* Footer */}
-      <footer className="border-t border-slate-900 bg-slate-950 text-center py-6 pb-20 px-4 text-xs text-slate-500">
+      <footer className="border-t border-sand-200 bg-cream-50 text-center py-6 pb-20 px-4 text-xs text-ink-500">
         <div className="max-w-7xl mx-auto flex flex-col sm:flex-row items-center justify-between gap-2">
-          <span>EduQuest - Learn, Play, Achieve</span>
-          <span className="text-slate-600">Belajar Macam Main Game!</span>
+          <span>EduQuest — Learn, Play, Achieve</span>
+          <span>Belajar Macam Main Game!</span>
         </div>
       </footer>
 
@@ -380,13 +413,10 @@ export default function App() {
         onSuccess={(profile) => {
           setUser(profile);
           setIsAuthOpen(false);
-          if (profile.role === 'parent') {
-            setIsParentOpen(true);
-          }
         }}
       />
 
-      {/* Profile & Parent Modal */}
+      {/* Profile Modal */}
       {user && (
         <ProfileModal
           isOpen={isProfileOpen}
@@ -398,46 +428,17 @@ export default function App() {
             setView('dashboard');
           }}
           onLogout={handleLogout}
-          onOpenAdmin={() => setIsAdminOpen(true)}
-          onOpenParent={() => {
-            setIsProfileOpen(false);
-            setIsParentOpen(true);
-          }}
         />
       )}
-
-      {/* Parent Dashboard Modal */}
-      <ParentDashboard
-        isOpen={isParentOpen}
-        subjects={subjects}
-        papers={papers}
-        sections={sections}
-        onClose={() => setIsParentOpen(false)}
-      />
-
-      {/* Admin CMS Modal */}
-      <AdminCMS
-        isOpen={isAdminOpen}
-        subjects={subjects}
-        papers={papers}
-        sections={sections}
-        questions={questions}
-        onClose={() => setIsAdminOpen(false)}
-        onAddQuestion={handleAddQuestion}
-        onAddSubject={(newSub) => setSubjects((prev) => [...prev, newSub])}
-      />
 
       {/* Role Selection Modal (First Login Flow) */}
       {user && (
         <RoleSelectionModal
           isOpen={isRoleSelectionOpen}
           user={user}
-          onRoleSelected={(updatedUser) => {
+          onSuccess={(updatedUser) => {
             setUser(updatedUser);
             setIsRoleSelectionOpen(false);
-            if (updatedUser.role === 'parent') {
-              setIsParentOpen(true);
-            }
           }}
         />
       )}
