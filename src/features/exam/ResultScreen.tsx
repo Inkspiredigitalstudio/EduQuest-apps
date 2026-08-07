@@ -182,8 +182,9 @@ export const ResultScreen: React.FC<ResultScreenProps> = ({
     year: 'numeric',
   });
 
- const waMessage = `Hi! Sikit update — ${studentName} baru habis latihan ${subjectTitle}, skor ${score}/${total}. Jangan lupa bagi pujian & reward untuk usaha dia ya 😍`
-_Dihantar daripada Aplikasi EduQuest._`;
+const waMessage = `Hi! Sikit update — ${studentName} baru habis latihan ${subjectTitle}, skor ${score}/${total}. Jangan lupa pujian & reward untuk usaha dia ya 😍
+
+Untuk lihat progress ${studentName} , boleh ke EduQuest App.`;
 
   const handleSendWhatsApp = () => {
     soundManager.playClick();
