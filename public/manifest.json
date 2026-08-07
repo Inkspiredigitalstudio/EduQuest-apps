@@ -1,0 +1,30 @@
+{
+  "short_name": "EduQuest",
+  "name": "EduQuest - Penilaian Pendidikan Islam",
+  "icons": [
+    {
+      "src": "/pwa-192x192.png",
+      "type": "image/png",
+      "sizes": "192x192",
+      "purpose": "any maskable"
+    },
+    {
+      "src": "/pwa-512x512.png",
+      "type": "image/png",
+      "sizes": "512x512",
+      "purpose": "any maskable"
+    },
+    {
+      "src": "/icon.svg",
+      "type": "image/svg+xml",
+      "sizes": "512x512",
+      "purpose": "any maskable"
+    }
+  ],
+  "start_url": "/",
+  "background_color": "#0f172a",
+  "theme_color": "#0284c7",
+  "display": "standalone",
+  "orientation": "portrait",
+  "description": "Platform Latih Tubi & Gamifikasi SPPI/SMKA - Akidah 2024, Fekah & Akhlak Islamiah"
+}
