@@ -1,0 +1,6 @@
+{
+  "name": "EduQuest",
+  "description": "Platform Hub Soalan Peperiksaan Interaktif (SPPIM Quest, PKSK, UKKM, PSRA & UASA) - Belajar, Bermain & Cemerlang",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}
