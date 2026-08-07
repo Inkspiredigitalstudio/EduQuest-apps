@@ -1,1 +1,146 @@
 @import "tailwindcss";
+@import url('https://fonts.googleapis.com/css2?family=Baloo+2:wght@500;600;700;800&family=Inter:wght@400;500;600;700;800&display=swap');
+
+@custom-variant dark (&:where(.dark, .dark *));
+
+@theme {
+  --font-display: "Baloo 2", "Inter", system-ui, sans-serif;
+  --font-sans: "Inter", system-ui, sans-serif;
+
+  --color-cream-50: #FEFDFB;
+  --color-cream-100: #FAF7F1;
+  --color-cream-200: #F2EDE3;
+
+  --color-sand-200: #EAE3D6;
+  --color-sand-300: #DDD4C2;
+  --color-sand-400: #C7BBA3;
+
+  --color-ink-900: #3A362F;
+  --color-ink-700: #57524A;
+  --color-ink-500: #837D70;
+  --color-ink-300: #AFA89A;
+
+  --color-mist-100: #E6EEF5;
+  --color-mist-200: #CBDDEC;
+  --color-mist-300: #A9C7E0;
+  --color-mist-400: #82AAD0;
+  --color-mist-500: #5D8CBB;
+  --color-mist-600: #4A729C;
+  --color-mist-700: #3B5C7D;
+
+  --color-sage-100: #E9EFE4;
+  --color-sage-200: #D2E0C8;
+  --color-sage-300: #B4CCA3;
+  --color-sage-400: #93B67C;
+  --color-sage-500: #799C61;
+  --color-sage-600: #61804B;
+
+  --color-honey-100: #F7EEDB;
+  --color-honey-200: #EEDCB3;
+  --color-honey-300: #E2C384;
+  --color-honey-400: #D4A857;
+  --color-honey-500: #BD8C3E;
+
+  --color-clay-100: #F5E7E2;
+  --color-clay-200: #E9CAC0;
+  --color-clay-300: #DAA897;
+  --color-clay-400: #C6836C;
+  --color-clay-500: #AC6650;
+}
+
+.dark {
+  --color-cream-50: #262420;
+  --color-cream-100: #1B1917;
+  --color-cream-200: #322F29;
+
+  --color-sand-200: #3A362F;
+  --color-sand-300: #4A453C;
+  --color-sand-400: #5C5648;
+
+  --color-ink-900: #F3F1EA;
+  --color-ink-700: #D8D4C8;
+  --color-ink-500: #A39C8C;
+  --color-ink-300: #6E6858;
+
+  --color-mist-100: #1B2733;
+  --color-mist-200: #23364A;
+  --color-mist-300: #35506B;
+  --color-mist-400: #6FA0CE;
+  --color-mist-500: #6FA0CE;
+  --color-mist-600: #8AB4DC;
+  --color-mist-700: #A9C7E0;
+
+  --color-sage-100: #1E2A19;
+  --color-sage-200: #28351F;
+  --color-sage-300: #3D4E2E;
+  --color-sage-400: #8AB06C;
+  --color-sage-500: #8AB06C;
+  --color-sage-600: #A9CC8F;
+
+  --color-honey-100: #332A18;
+  --color-honey-200: #40331C;
+  --color-honey-300: #6B5227;
+  --color-honey-400: #D4A857;
+  --color-honey-500: #E2C384;
+
+  --color-clay-100: #2E211D;
+  --color-clay-200: #3A2721;
+  --color-clay-300: #5C3A30;
+  --color-clay-400: #C6836C;
+  --color-clay-500: #D9A28C;
+}
+
+html {
+  -webkit-tap-highlight-color: transparent;
+  color-scheme: light;
+}
+
+html.dark {
+  color-scheme: dark;
+}
+
+body {
+  font-family: var(--font-sans);
+  background-color: var(--color-cream-100);
+  color: var(--color-ink-900);
+  transition: background-color 0.2s ease, color 0.2s ease;
+}
+
+h1, h2, h3, .font-display {
+  font-family: var(--font-display);
+}
+
+::-webkit-scrollbar {
+  width: 8px;
+  height: 8px;
+}
+::-webkit-scrollbar-track {
+  background: transparent;
+}
+::-webkit-scrollbar-thumb {
+  background-color: var(--color-sand-300);
+  border-radius: 999px;
+}
+
+.scrollbar-none::-webkit-scrollbar {
+  display: none;
+}
+.scrollbar-none {
+  -ms-overflow-style: none;
+  scrollbar-width: none;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+    scroll-behavior: auto !important;
+  }
+}
+
+:focus-visible {
+  outline: 2px solid var(--color-mist-500);
+  outline-offset: 2px;
+  border-radius: 8px;
+}
