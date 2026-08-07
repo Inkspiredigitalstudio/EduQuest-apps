@@ -167,10 +167,10 @@ export const ResultScreen: React.FC<ResultScreenProps> = ({
   } else if (percentage >= 80 && percentage < 100) {
     gradeBadge = 'JAYYID JIDDAN (Cemerlang) ✨';
   } else if (percentage === 100) {
-    resultTitle = 'MAMTAZ! (100% Cemerlang)';
+    resultTitle = 'MUMTAZ! (100% Cemerlang)';
     resultSubtitle = 'Pencapaian sempurna! Anda telah menguasai soalan tajuk ini sepenuhnya!';
     badgeColor = 'from-yellow-400 via-amber-500 to-orange-500';
-    gradeBadge = 'MAMTAZ (Sempurna) 🌟';
+    gradeBadge = 'MUMTAZ (Sempurna) 🌟';
   }
 
   const studentName = user?.name || 'Pelajar';
@@ -182,20 +182,8 @@ export const ResultScreen: React.FC<ResultScreenProps> = ({
     year: 'numeric',
   });
 
-  const waMessage = `Assalamu'alaikum & Salam Sejahtera Ibu/Bapa 🤲
-
-*LAPORAN KEPUTUSAN LATIHAN EDUQUEST*
-───────────────────────────────
-👤 *Nama Pelajar:* ${studentName}
-📚 *Mata Pelajaran:* ${subjectTitle}
-📝 *Kertas & Bahagian:* ${paperTitle} - ${section.title}
-📊 *Keputusan:* ${score} / ${total} Soalan Betul (${percentage}%)
-🏆 *Pencapaian:* ${gradeBadge}
-🎁 *Ganjaran:* +${coinsEarned} Koin | +${xpEarned} XP
-
-📅 *Tarikh:* ${dateFormatted}
-
-_Dihantar daripada Aplikasi EduQuest Peperiksaan SPPI & SMKA._`;
+ const waMessage = `Hi! Sikit update — ${studentName} baru habis latihan ${subjectTitle}, skor ${score}/${total}. Jangan lupa bagi pujian & reward untuk usaha dia ya 😍`;
+_Dihantar daripada Aplikasi EduQuest._`;
 
   const handleSendWhatsApp = () => {
     soundManager.playClick();
