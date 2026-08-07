@@ -83,14 +83,13 @@ export async function checkLoginIdExists(loginId: string): Promise<boolean> {
 
 export async function updateUserRole(
   user: UserProfile,
-  role: 'student' | 'parent' | 'admin'
+  role: 'student' | 'parent'
 ): Promise<UserProfile> {
   const inviteCode = role === 'student' ? (user.invite_code || generateInviteCode()) : user.invite_code;
   const updatedProfile: UserProfile = {
     ...user,
     role,
     invite_code: inviteCode,
-    is_approved_admin: role === 'admin' ? true : user.is_approved_admin,
   };
 
   localStorage.setItem(LOCAL_USER_KEY, JSON.stringify(updatedProfile));
@@ -115,7 +114,7 @@ export async function updateUserRole(
 export async function registerUser(
   displayName: string,
   password: string,
-  role: 'student' | 'parent' | 'admin' = 'student',
+  role: 'student' | 'parent' = 'student',
   phone?: string,
   customUsername?: string
 ): Promise<{
@@ -168,7 +167,6 @@ export async function registerUser(
           streak_days: 1,
           role,
           invite_code: inviteCode,
-          is_approved_admin: role === 'admin',
         };
 
         // Ensure user row exists in public.users
@@ -222,7 +220,6 @@ export async function registerUser(
     streak_days: 1,
     role,
     invite_code: inviteCode,
-    is_approved_admin: role === 'admin',
   };
 
   existingUsers.push(localProfile);
@@ -230,102 +227,6 @@ export async function registerUser(
   localStorage.setItem(LOCAL_USER_KEY, JSON.stringify(localProfile));
 
   return { profile: localProfile, loginId };
-}
-
-// ---------------- ADMIN MANAGEMENT HELPERS ----------------
-export function getAllRegisteredUsers(): UserProfile[] {
-  const localList: UserProfile[] = JSON.parse(localStorage.getItem(LOCAL_USERS_LIST_KEY) || '[]');
-  const activeUser = getCurrentUser();
-  const map = new Map<string, UserProfile>();
-
-  localList.forEach((u) => map.set(u.id, u));
-  if (activeUser) {
-    map.set(activeUser.id, activeUser);
-  }
-
-  return Array.from(map.values());
-}
-
-export async function approveAdminUser(userId: string): Promise<boolean> {
-  const localList: UserProfile[] = JSON.parse(localStorage.getItem(LOCAL_USERS_LIST_KEY) || '[]');
-  const idx = localList.findIndex((u) => u.id === userId);
-  if (idx >= 0) {
-    localList[idx].role = 'admin';
-    localList[idx].is_approved_admin = true;
-    localStorage.setItem(LOCAL_USERS_LIST_KEY, JSON.stringify(localList));
-  }
-
-  const activeUser = getCurrentUser();
-  if (activeUser && activeUser.id === userId) {
-    activeUser.role = 'admin';
-    activeUser.is_approved_admin = true;
-    localStorage.setItem(LOCAL_USER_KEY, JSON.stringify(activeUser));
-  }
-
-  if (isSupabaseConfigured && supabase) {
-    try {
-      await supabase.from('users').update({ role: 'admin' }).eq('id', userId);
-    } catch (err) {
-      console.warn('Approve admin user Supabase failed:', err);
-    }
-  }
-
-  return true;
-}
-
-export async function revokeAdminUser(userId: string): Promise<boolean> {
-  const localList: UserProfile[] = JSON.parse(localStorage.getItem(LOCAL_USERS_LIST_KEY) || '[]');
-  const idx = localList.findIndex((u) => u.id === userId);
-  if (idx >= 0) {
-    localList[idx].role = 'student';
-    localList[idx].is_approved_admin = false;
-    localStorage.setItem(LOCAL_USERS_LIST_KEY, JSON.stringify(localList));
-  }
-
-  const activeUser = getCurrentUser();
-  if (activeUser && activeUser.id === userId) {
-    activeUser.role = 'student';
-    activeUser.is_approved_admin = false;
-    localStorage.setItem(LOCAL_USER_KEY, JSON.stringify(activeUser));
-  }
-
-  if (isSupabaseConfigured && supabase) {
-    try {
-      await supabase.from('users').update({ role: 'student' }).eq('id', userId);
-    } catch (err) {
-      console.warn('Revoke admin user Supabase failed:', err);
-    }
-  }
-
-  return true;
-}
-
-export async function resetUserPassword(loginId: string, newPassword: string): Promise<{ success: boolean; message: string }> {
-  const cleanId = loginId.trim().toUpperCase();
-  const email = generateSyntheticEmail(cleanId);
-
-  // Update in Supabase if enabled
-  if (isSupabaseConfigured && supabase) {
-    try {
-      // In Supabase admin or via auth API
-      const { error } = await supabase.auth.updateUser({ password: newPassword });
-      if (error) {
-        console.warn('Supabase reset password note:', error.message);
-      }
-    } catch (err) {
-      console.warn('Supabase reset password exception:', err);
-    }
-  }
-
-  // Update local storage record
-  const localList: UserProfile[] = JSON.parse(localStorage.getItem(LOCAL_USERS_LIST_KEY) || '[]');
-  const user = localList.find((u) => u.login_id.toUpperCase() === cleanId);
-
-  if (user) {
-    return { success: true, message: `Kata laluan untuk ${user.name} (${cleanId}) berjaya ditukar kepada "${newPassword}".` };
-  }
-
-  return { success: true, message: `Kata laluan untuk ID ${cleanId} berjaya disetkan kepada "${newPassword}".` };
 }
 
 // Backward compatible wrapper
@@ -884,7 +785,7 @@ export async function createLinkRequest(
     id: `link-${Date.now()}`,
     observer_id: observer.id,
     observer_name: observer.name,
-    observer_role: (observer.role as 'parent' | 'admin') || 'parent',
+    observer_role: 'parent',
     student_id: student.id,
     student_name: student.name,
     student_invite_code: cleanCode,
