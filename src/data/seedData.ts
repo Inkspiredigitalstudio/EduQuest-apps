@@ -7,7 +7,7 @@ export const INITIAL_SUBJECTS: Subject[] = [
     icon: 'BookOpen',
     description: 'Hukum-hakam ibadat, muamalat, wuduk, solat, puasa & kesucian dalam Islam',
     status: 'active',
-    color: 'from-blue-600 to-indigo-600',
+    color: 'from-mist-400 to-mist-500',
   },
   {
     id: 'sub-akhlak',
@@ -15,7 +15,7 @@ export const INITIAL_SUBJECTS: Subject[] = [
     icon: 'Heart',
     description: 'Adab kepada Allah, ibu bapa, guru, rakan & sifat-sifat mahmudah',
     status: 'active',
-    color: 'from-purple-600 to-pink-600',
+    color: 'from-clay-400 to-clay-500',
   },
   {
     id: 'sub-akidah',
@@ -23,7 +23,7 @@ export const INITIAL_SUBJECTS: Subject[] = [
     icon: 'ShieldCheck',
     description: 'Rukun Iman, sifat 20 Allah, tauhid & asas keimanan SPPI 2024',
     status: 'active',
-    color: 'from-emerald-600 to-teal-600',
+    color: 'from-sage-400 to-sage-500',
   },
   {
     id: 'sub-sirah',
@@ -31,7 +31,7 @@ export const INITIAL_SUBJECTS: Subject[] = [
     icon: 'Compass',
     description: 'Sejarah perjuangan Rasulullah SAW & Khulafa Ar-Rasyidin SPPI 2024',
     status: 'active',
-    color: 'from-amber-600 to-orange-600',
+    color: 'from-honey-400 to-honey-500',
   },
 ];
 export const INITIAL_PAPERS: Paper[] = [
@@ -1917,7 +1917,8 @@ CREATE TABLE IF NOT EXISTS public.questions (
   section_id TEXT REFERENCES public.sections(id) ON DELETE CASCADE,
   question_text TEXT NOT NULL,
   explanation TEXT,
-  order_num INTEGER DEFAULT 1
+  order_num INTEGER DEFAULT 1,
+  difficulty TEXT DEFAULT 'sederhana'
 );
 
 -- 6. Create Choices Table
