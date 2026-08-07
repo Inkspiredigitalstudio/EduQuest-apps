@@ -1,0 +1,556 @@
+import React, { useState } from 'react';
+import { UserProfile, Subject, Paper, Section, Question, Choice } from '../../types';
+import { isSupabaseConfigured } from '../../lib/supabase';
+import { SUPABASE_SQL_SETUP_DDL } from '../../data/seedData';
+import { soundManager } from '../../lib/audio';
+import {
+  Shield, Database, Plus, CheckCircle2, Code2, Copy, LogOut, Sun, Moon,
+  Pencil, Trash2, X, AlertCircle, Upload, ListChecks, Lock,
+} from 'lucide-react';
+
+interface AdminDashboardProps {
+  user: UserProfile;
+  subjects: Subject[];
+  papers: Paper[];
+  sections: Section[];
+  questions: Question[];
+  onAddQuestion: (q: Question) => void;
+  onUpdateQuestion: (q: Question) => void;
+  onDeleteQuestion: (questionId: string) => void;
+  onBulkAddQuestions: (qs: Question[]) => void;
+  onLogout: () => void;
+  isDarkMode: boolean;
+  onToggleDarkMode: () => void;
+}
+
+const DIFFICULTY_LABEL: Record<string, string> = {
+  mudah: 'Mudah',
+  sederhana: 'Sederhana',
+  sukar: 'Sukar',
+};
+
+const DIFFICULTY_COLOR: Record<string, string> = {
+  mudah: 'bg-sage-100 text-sage-600',
+  sederhana: 'bg-honey-100 text-honey-500',
+  sukar: 'bg-clay-100 text-clay-500',
+};
+
+const IMPORT_PLACEHOLDER = `[
+  {
+    "section_id": "sec-fekah-2024-A",
+    "question_text": "Apakah hukum solat fardu bagi orang Islam yang baligh?",
+    "explanation": "Solat fardu adalah wajib ke atas setiap Muslim yang baligh dan berakal.",
+    "difficulty": "mudah",
+    "choices": [
+      { "text": "Wajib", "correct": true },
+      { "text": "Sunat", "correct": false },
+      { "text": "Harus", "correct": false }
+    ]
+  }
+]`;
+
+export const AdminDashboard: React.FC<AdminDashboardProps> = ({
+  user,
+  subjects,
+  papers,
+  sections,
+  questions,
+  onAddQuestion,
+  onUpdateQuestion,
+  onDeleteQuestion,
+  onBulkAddQuestions,
+  onLogout,
+  isDarkMode,
+  onToggleDarkMode,
+}) => {
+  const [activeTab, setActiveTab] = useState<'manual' | 'import' | 'setup'>('manual');
+  const [activeModuleTab, setActiveModuleTab] = useState<'sppim' | 'pksk' | 'uasa'>('sppim');
+
+  // ---- Manual Add / Update form state ----
+  const [editingId, setEditingId] = useState<string | null>(null);
+  const [selectedSectionId, setSelectedSectionId] = useState<string>(sections[0]?.id || '');
+  const [qText, setQText] = useState('');
+  const [qExplanation, setQExplanation] = useState('');
+  const [optA, setOptA] = useState('');
+  const [optB, setOptB] = useState('');
+  const [optC, setOptC] = useState('');
+  const [optD, setOptD] = useState('');
+  const [correctOptIndex, setCorrectOptIndex] = useState<number>(0);
+  const [difficulty, setDifficulty] = useState<'mudah' | 'sederhana' | 'sukar'>('sederhana');
+  const [formMsg, setFormMsg] = useState('');
+
+  // ---- Bulk import state ----
+  const [importText, setImportText] = useState('');
+  const [importMsg, setImportMsg] = useState<{ type: 'success' | 'error'; text: string } | null>(null);
+
+  // ---- Setup / DDL tab state ----
+  const [copiedSql, setCopiedSql] = useState(false);
+
+  const inputCls = 'w-full bg-cream-50 border border-sand-300 focus:border-mist-400 text-ink-900 text-xs rounded-xl p-3 outline-none transition-colors';
+
+  const resetForm = () => {
+    setEditingId(null);
+    setQText('');
+    setQExplanation('');
+    setOptA('');
+    setOptB('');
+    setOptC('');
+    setOptD('');
+    setCorrectOptIndex(0);
+    setDifficulty('sederhana');
+    setSelectedSectionId(sections[0]?.id || '');
+  };
+
+  const handleEditClick = (q: Question) => {
+    soundManager.playClick();
+    setActiveTab('manual');
+    setEditingId(q.id);
+    setSelectedSectionId(q.section_id);
+    setQText(q.question_text);
+    setQExplanation(q.explanation || '');
+    setDifficulty(q.difficulty || 'sederhana');
+    const opts = q.choices || [];
+    setOptA(opts[0]?.option_text || '');
+    setOptB(opts[1]?.option_text || '');
+    setOptC(opts[2]?.option_text || '');
+    setOptD(opts[3]?.option_text || '');
+    const correctIdx = opts.findIndex((c) => c.is_correct);
+    setCorrectOptIndex(correctIdx >= 0 ? correctIdx : 0);
+    setFormMsg('');
+  };
+
+  const handleDeleteClick = (q: Question) => {
+    if (!confirm(`Padam soalan ini secara kekal?\n\n"${q.question_text.slice(0, 60)}..."`)) return;
+    soundManager.playClick();
+    onDeleteQuestion(q.id);
+    if (editingId === q.id) resetForm();
+  };
+
+  const handleSubmitForm = (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!qText.trim() || !optA.trim() || !optB.trim() || !selectedSectionId) return;
+
+    soundManager.playClick();
+
+    const qId = editingId || `q-custom-${Date.now()}`;
+    const optionsText = [optA, optB, optC, optD].filter((opt) => opt.trim().length > 0);
+
+    const choices: Choice[] = optionsText.map((text, idx) => ({
+      id: `c-custom-${Date.now()}-${idx}`,
+      question_id: qId,
+      option_text: text,
+      is_correct: idx === correctOptIndex,
+    }));
+
+    const question: Question = {
+      id: qId,
+      section_id: selectedSectionId,
+      question_text: qText.trim(),
+      explanation: qExplanation.trim() || 'Soalan latihan tambahan oleh Pentadbir.',
+      order: editingId ? (questions.find((q) => q.id === editingId)?.order ?? questions.length + 1) : questions.length + 1,
+      choices,
+      difficulty,
+    };
+
+    if (editingId) {
+      onUpdateQuestion(question);
+      setFormMsg('Soalan berjaya dikemas kini!');
+      soundManager.playLevelUp();
+    } else {
+      onAddQuestion(question);
+      setFormMsg('Soalan baru berjaya ditambah!');
+      soundManager.playLevelUp();
+    }
+
+    resetForm();
+    setTimeout(() => setFormMsg(''), 3000);
+  };
+
+  const handleImport = () => {
+    setImportMsg(null);
+    try {
+      const parsed = JSON.parse(importText);
+      if (!Array.isArray(parsed) || parsed.length === 0) {
+        throw new Error('Data mesti berbentuk senarai (array) soalan — sila rujuk format contoh.');
+      }
+
+      const newQuestions: Question[] = parsed.map((item: any, idx: number) => {
+        if (!item.section_id || !item.question_text || !Array.isArray(item.choices) || item.choices.length < 2) {
+          throw new Error(`Soalan #${idx + 1} tidak lengkap (perlukan section_id, question_text, dan sekurang-kurangnya 2 choices).`);
+        }
+        const qId = `q-import-${Date.now()}-${idx}`;
+        const choices: Choice[] = item.choices.map((c: any, cIdx: number) => ({
+          id: `c-import-${Date.now()}-${idx}-${cIdx}`,
+          question_id: qId,
+          option_text: c.text || c.option_text || '',
+          is_correct: Boolean(c.correct ?? c.is_correct),
+        }));
+        if (!choices.some((c) => c.is_correct)) {
+          throw new Error(`Soalan #${idx + 1} tiada jawapan betul ditanda (correct: true).`);
+        }
+        return {
+          id: qId,
+          section_id: item.section_id,
+          question_text: item.question_text,
+          explanation: item.explanation || '',
+          order: questions.length + idx + 1,
+          choices,
+          difficulty: ['mudah', 'sederhana', 'sukar'].includes(item.difficulty) ? item.difficulty : undefined,
+        } as Question;
+      });
+
+      soundManager.playLevelUp();
+      onBulkAddQuestions(newQuestions);
+      setImportMsg({ type: 'success', text: `${newQuestions.length} soalan berjaya diimport ke bank soalan!` });
+      setImportText('');
+    } catch (err: any) {
+      soundManager.playClick();
+      setImportMsg({ type: 'error', text: err.message || 'Format data tidak sah. Sila semak semula JSON anda.' });
+    }
+  };
+
+  const handleCopySql = () => {
+    navigator.clipboard.writeText(SUPABASE_SQL_SETUP_DDL);
+    setCopiedSql(true);
+    soundManager.playCoin();
+    setTimeout(() => setCopiedSql(false), 2500);
+  };
+
+  return (
+    <div className="min-h-screen bg-cream-100">
+      {/* Header — dedicated protected-route shell, same pattern as Parent portal */}
+      <header className="sticky top-0 z-40 bg-cream-50/95 backdrop-blur border-b border-sand-200 px-4 sm:px-6 py-3.5">
+        <div className="max-w-6xl mx-auto flex items-center justify-between">
+          <div className="flex items-center gap-2.5">
+            <div className="w-9 h-9 rounded-2xl bg-ink-900 flex items-center justify-center shrink-0">
+              <Shield className="w-4.5 h-4.5 text-white" />
+            </div>
+            <div>
+              <div className="flex items-center gap-1.5">
+                <span className="text-sm font-display font-bold text-ink-900 leading-tight">EduQuest</span>
+                <span className="text-[9px] font-bold uppercase bg-mist-100 text-mist-600 px-1.5 py-0.5 rounded-md">Modul SPPIM</span>
+              </div>
+              <span className="text-[11px] text-ink-500 font-semibold">Admin Dashboard • {user.name}</span>
+            </div>
+          </div>
+
+          <div className="flex items-center gap-2">
+            <button
+              onClick={onToggleDarkMode}
+              className="p-2.5 rounded-xl bg-cream-100 hover:bg-cream-200 text-ink-500 border border-sand-200 transition-colors"
+              title={isDarkMode ? 'Tukar ke Mod Cerah' : 'Tukar ke Mod Gelap'}
+            >
+              {isDarkMode ? <Sun className="w-4 h-4 text-honey-400" /> : <Moon className="w-4 h-4 text-mist-500" />}
+            </button>
+            <button
+              onClick={() => {
+                soundManager.playClick();
+                onLogout();
+              }}
+              className="p-2.5 rounded-xl bg-cream-100 hover:bg-clay-100 hover:text-clay-500 text-ink-500 border border-sand-200 transition-colors"
+              title="Log Keluar"
+            >
+              <LogOut className="w-4 h-4" />
+            </button>
+          </div>
+        </div>
+      </header>
+
+      <main className="max-w-5xl mx-auto px-4 sm:px-6 py-6 space-y-6 pb-14">
+        {/* Module scaffold selector — SPPIM active, PKSK/UASA reserved for future modules */}
+        <div className="space-y-2">
+          <h1 className="text-lg font-display font-bold text-ink-900">Pengurusan Bank Soalan</h1>
+          <div className="flex items-center gap-2 overflow-x-auto pb-1 scrollbar-none">
+            {[
+              { id: 'sppim', name: 'SPPIM', active: true },
+              { id: 'pksk', name: 'PKSK', active: false },
+              { id: 'uasa', name: 'UASA', active: false },
+            ].map((mod) => {
+              const isSelected = activeModuleTab === mod.id;
+              return (
+                <button
+                  key={mod.id}
+                  onClick={() => mod.active && setActiveModuleTab(mod.id as any)}
+                  disabled={!mod.active}
+                  className={`px-4 py-2 rounded-xl text-xs font-bold shrink-0 border transition-colors flex items-center gap-1.5 ${
+                    isSelected
+                      ? 'bg-ink-900 text-white border-ink-900'
+                      : mod.active
+                      ? 'bg-cream-50 hover:bg-cream-100 text-ink-500 border-sand-200'
+                      : 'bg-cream-100 text-ink-300 border-sand-200 cursor-not-allowed'
+                  }`}
+                >
+                  <span>{mod.name}</span>
+                  {!mod.active && (
+                    <span className="flex items-center gap-1 text-[9px] px-1.5 py-0.5 rounded-full bg-cream-200">
+                      <Lock className="w-2.5 h-2.5" /> Akan Datang
+                    </span>
+                  )}
+                </button>
+              );
+            })}
+          </div>
+        </div>
+
+        {activeModuleTab !== 'sppim' ? (
+          <div className="bg-cream-50 border border-sand-200 rounded-3xl p-8 text-center space-y-3">
+            <div className="w-12 h-12 rounded-2xl bg-cream-100 flex items-center justify-center mx-auto text-ink-500">
+              <Lock className="w-6 h-6" />
+            </div>
+            <h3 className="text-base font-display font-bold text-ink-900">Modul Ini Belum Aktif</h3>
+            <p className="text-xs text-ink-500 max-w-sm mx-auto">
+              Kerangka navigasi untuk modul ini sudah disediakan supaya senang dikembangkan kelak, tetapi bank soalan &amp; struktur kertas untuk modul ini belum dibina.
+            </p>
+          </div>
+        ) : (
+          <>
+            {/* Tab Switcher */}
+            <div className="grid grid-cols-3 bg-cream-200 p-1 rounded-2xl">
+              {[
+                { id: 'manual', label: 'Borang Manual', icon: Plus },
+                { id: 'import', label: 'Import Pukal', icon: Upload },
+                { id: 'setup', label: 'Skrip SQL Setup', icon: Database },
+              ].map((tab) => (
+                <button
+                  key={tab.id}
+                  onClick={() => {
+                    setActiveTab(tab.id as any);
+                    soundManager.playClick();
+                  }}
+                  className={`py-2.5 text-xs font-bold rounded-xl transition-colors flex items-center justify-center gap-1.5 ${
+                    activeTab === tab.id ? 'bg-cream-50 text-ink-900 shadow-sm' : 'text-ink-500 hover:text-ink-700'
+                  }`}
+                >
+                  <tab.icon className="w-3.5 h-3.5" />
+                  <span className="hidden xs:inline">{tab.label}</span>
+                </button>
+              ))}
+            </div>
+
+            {/* TAB 1: Manual Add / Update */}
+            {activeTab === 'manual' && (
+              <div className="space-y-6">
+                <div className="bg-cream-50 border border-sand-200 rounded-3xl p-5 space-y-4">
+                  <div className="flex items-center justify-between">
+                    <h3 className="text-sm font-bold text-mist-600 flex items-center gap-2">
+                      {editingId ? <Pencil className="w-4 h-4" /> : <Plus className="w-4 h-4" />}
+                      <span>{editingId ? 'Kemas Kini Soalan' : 'Cipta Soalan Baru'}</span>
+                    </h3>
+                    {editingId && (
+                      <button
+                        onClick={() => {
+                          soundManager.playClick();
+                          resetForm();
+                        }}
+                        className="text-xs font-semibold text-ink-500 hover:text-ink-700 flex items-center gap-1"
+                      >
+                        <X className="w-3.5 h-3.5" /> Batal Edit
+                      </button>
+                    )}
+                  </div>
+
+                  {formMsg && (
+                    <div className="p-3 bg-sage-100 rounded-xl text-sage-600 text-xs font-bold flex items-center gap-2">
+                      <CheckCircle2 className="w-4 h-4" />
+                      <span>{formMsg}</span>
+                    </div>
+                  )}
+
+                  <form onSubmit={handleSubmitForm} className="space-y-4">
+                    <div>
+                      <label className="block text-xs font-bold text-ink-700 mb-1">Pilih Bahagian Soalan</label>
+                      <select value={selectedSectionId} onChange={(e) => setSelectedSectionId(e.target.value)} className={inputCls}>
+                        {sections.map((s) => {
+                          const paper = papers.find((p) => p.id === s.paper_id);
+                          return (
+                            <option key={s.id} value={s.id}>
+                              {paper ? `${paper.title} — ` : ''}{s.title}
+                            </option>
+                          );
+                        })}
+                      </select>
+                    </div>
+
+                    <div>
+                      <label className="block text-xs font-bold text-ink-700 mb-1">Teks Soalan Utama</label>
+                      <textarea rows={2} value={qText} onChange={(e) => setQText(e.target.value)} placeholder="Contoh: Apakah hukum bersuci daripada hadas sebelum mendirikan solat?" className={inputCls} required />
+                    </div>
+
+                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                      <div>
+                        <label className="block text-xs font-bold text-ink-700 mb-1">Pilihan A</label>
+                        <input type="text" value={optA} onChange={(e) => setOptA(e.target.value)} placeholder="Pilihan A" className={inputCls} required />
+                      </div>
+                      <div>
+                        <label className="block text-xs font-bold text-ink-700 mb-1">Pilihan B</label>
+                        <input type="text" value={optB} onChange={(e) => setOptB(e.target.value)} placeholder="Pilihan B" className={inputCls} required />
+                      </div>
+                      <div>
+                        <label className="block text-xs font-bold text-ink-700 mb-1">Pilihan C (pilihan)</label>
+                        <input type="text" value={optC} onChange={(e) => setOptC(e.target.value)} placeholder="Pilihan C" className={inputCls} />
+                      </div>
+                      <div>
+                        <label className="block text-xs font-bold text-ink-700 mb-1">Pilihan D (pilihan)</label>
+                        <input type="text" value={optD} onChange={(e) => setOptD(e.target.value)} placeholder="Pilihan D" className={inputCls} />
+                      </div>
+                    </div>
+
+                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                      <div>
+                        <label className="block text-xs font-bold text-ink-700 mb-1">Jawapan Betul Adalah</label>
+                        <select value={correctOptIndex} onChange={(e) => setCorrectOptIndex(Number(e.target.value))} className={`${inputCls} text-honey-500 font-bold`}>
+                          <option value={0}>Pilihan A</option>
+                          <option value={1}>Pilihan B</option>
+                          <option value={2}>Pilihan C</option>
+                          <option value={3}>Pilihan D</option>
+                        </select>
+                      </div>
+                      <div>
+                        <label className="block text-xs font-bold text-ink-700 mb-1">Tahap Kesukaran</label>
+                        <select value={difficulty} onChange={(e) => setDifficulty(e.target.value as any)} className={inputCls}>
+                          <option value="mudah">Mudah</option>
+                          <option value="sederhana">Sederhana</option>
+                          <option value="sukar">Sukar</option>
+                        </select>
+                      </div>
+                    </div>
+
+                    <div>
+                      <label className="block text-xs font-bold text-ink-700 mb-1">Nota Penerangan / Dalil</label>
+                      <input type="text" value={qExplanation} onChange={(e) => setQExplanation(e.target.value)} placeholder="Penerangan hukum untuk jawapan betul..." className={inputCls} />
+                    </div>
+
+                    <button
+                      type="submit"
+                      className="w-full py-3 px-4 bg-mist-500 hover:bg-mist-600 text-white font-bold rounded-xl text-xs transition-colors flex items-center justify-center gap-2"
+                    >
+                      {editingId ? <Pencil className="w-4 h-4" /> : <Plus className="w-4 h-4" />}
+                      <span>{editingId ? 'Simpan Perubahan' : 'Simpan & Tambah Soalan Ini'}</span>
+                    </button>
+                  </form>
+                </div>
+
+                {/* Existing question bank list — Edit / Delete */}
+                <div className="bg-cream-50 border border-sand-200 rounded-3xl p-5 space-y-3">
+                  <h3 className="text-sm font-bold text-ink-700 flex items-center gap-2">
+                    <ListChecks className="w-4 h-4 text-mist-500" />
+                    <span>Bank Soalan Sedia Ada ({questions.length})</span>
+                  </h3>
+
+                  <div className="space-y-2 max-h-80 overflow-y-auto pr-1">
+                    {questions.map((q, idx) => (
+                      <div key={q.id} className="p-3 bg-cream-100 rounded-xl border border-sand-200 text-xs flex items-center justify-between gap-3">
+                        <div className="min-w-0 flex-1">
+                          <div className="flex items-center gap-1.5 flex-wrap">
+                            <span className="font-bold text-mist-600">#{idx + 1}</span>
+                            <span className="text-ink-700 truncate">{q.question_text}</span>
+                          </div>
+                          <div className="flex items-center gap-1.5 mt-1">
+                            <span className="text-[10px] text-ink-500 bg-cream-200 px-2 py-0.5 rounded">{q.choices.length} Pilihan</span>
+                            {q.difficulty && (
+                              <span className={`text-[10px] font-bold px-2 py-0.5 rounded ${DIFFICULTY_COLOR[q.difficulty]}`}>
+                                {DIFFICULTY_LABEL[q.difficulty]}
+                              </span>
+                            )}
+                          </div>
+                        </div>
+                        <div className="flex items-center gap-1.5 shrink-0">
+                          <button onClick={() => handleEditClick(q)} className="p-2 rounded-lg bg-cream-50 hover:bg-mist-100 text-mist-600 border border-sand-200 transition-colors" title="Kemas Kini">
+                            <Pencil className="w-3.5 h-3.5" />
+                          </button>
+                          <button onClick={() => handleDeleteClick(q)} className="p-2 rounded-lg bg-cream-50 hover:bg-clay-100 text-clay-500 border border-sand-200 transition-colors" title="Padam">
+                            <Trash2 className="w-3.5 h-3.5" />
+                          </button>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              </div>
+            )}
+
+            {/* TAB 2: Bulk Import */}
+            {activeTab === 'import' && (
+              <div className="bg-cream-50 border border-sand-200 rounded-3xl p-5 space-y-4">
+                <div className="flex items-start gap-3 bg-mist-100 border border-mist-200 rounded-2xl p-4">
+                  <AlertCircle className="w-4 h-4 text-mist-600 shrink-0 mt-0.5" />
+                  <p className="text-xs text-ink-700 leading-relaxed">
+                    Ruang ini menerima <strong>format data berstruktur (JSON)</strong>, bukan SQL mentah — menjalankan SQL sebarangan terus dari pelayar bukan amalan selamat (kunci Supabase awam anda tidak dibenarkan buat operasi tulis sebegitu). Tampal senarai soalan mengikut format di bawah, untuk mana-mana modul (SPPIM, PKSK atau UASA kelak).
+                  </p>
+                </div>
+
+                {importMsg && (
+                  <div className={`p-3 rounded-xl text-xs font-bold flex items-center gap-2 ${importMsg.type === 'success' ? 'bg-sage-100 text-sage-600' : 'bg-clay-100 text-clay-500'}`}>
+                    {importMsg.type === 'success' ? <CheckCircle2 className="w-4 h-4 shrink-0" /> : <AlertCircle className="w-4 h-4 shrink-0" />}
+                    <span>{importMsg.text}</span>
+                  </div>
+                )}
+
+                <div>
+                  <label className="block text-xs font-bold text-ink-700 mb-1.5">Data Soalan (Format JSON)</label>
+                  <textarea
+                    rows={14}
+                    value={importText}
+                    onChange={(e) => setImportText(e.target.value)}
+                    placeholder={IMPORT_PLACEHOLDER}
+                    className="w-full bg-cream-50 border border-sand-300 focus:border-mist-400 text-ink-900 font-mono text-xs rounded-2xl p-4 outline-none resize-none leading-relaxed"
+                  />
+                </div>
+
+                <button
+                  onClick={handleImport}
+                  disabled={!importText.trim()}
+                  className="w-full py-3 px-4 bg-mist-500 hover:bg-mist-600 disabled:opacity-50 text-white font-bold rounded-xl text-xs transition-colors flex items-center justify-center gap-2"
+                >
+                  <Upload className="w-4 h-4" />
+                  <span>Import Soalan Ke Bank Soalan</span>
+                </button>
+              </div>
+            )}
+
+            {/* TAB 3: SQL Setup Script (Supabase table setup — separate from question import) */}
+            {activeTab === 'setup' && (
+              <div className="space-y-4">
+                <div className={`p-4 rounded-2xl border flex items-center gap-3 ${isSupabaseConfigured ? 'bg-sage-100 border-sage-200 text-sage-600' : 'bg-honey-100 border-honey-200 text-honey-500'}`}>
+                  <Database className="w-6 h-6 shrink-0" />
+                  <div>
+                    <h4 className="text-sm font-bold">
+                      {isSupabaseConfigured ? 'Sambungan Supabase Aktif & Terhubung!' : 'Mod Hibrid Aktif (Supabase Tempatan / Local Fallback)'}
+                    </h4>
+                    <p className="text-xs opacity-90 mt-0.5">
+                      {isSupabaseConfigured
+                        ? 'Aplikasi sedang menyelaraskan akaun & jawapan terus ke pengkalan data Postgres Supabase.'
+                        : 'Untuk menyambung ke Supabase fizikal, masukkan VITE_SUPABASE_URL & VITE_SUPABASE_ANON_KEY dalam pembolehubah persekitaran.'}
+                    </p>
+                  </div>
+                </div>
+
+                <div className="bg-cream-50 border border-sand-200 rounded-3xl p-5 space-y-3">
+                  <div className="flex items-center justify-between">
+                    <div className="flex items-center gap-2">
+                      <Code2 className="w-4 h-4 text-mist-500" />
+                      <h3 className="text-sm font-bold text-ink-900">Skrip DDL Postgres (Sekali Jalani Di Supabase SQL Editor)</h3>
+                    </div>
+                    <button onClick={handleCopySql} className="py-1.5 px-3 bg-mist-500 hover:bg-mist-600 text-white font-bold text-xs rounded-xl flex items-center gap-1.5 transition-colors">
+                      <Copy className="w-3.5 h-3.5" />
+                      <span>{copiedSql ? 'Berjaya Disalin!' : 'Salin Skrip SQL'}</span>
+                    </button>
+                  </div>
+                  <textarea
+                    readOnly
+                    rows={12}
+                    value={SUPABASE_SQL_SETUP_DDL}
+                    className="w-full bg-ink-900 border border-sand-300 text-mist-200 font-mono text-xs rounded-2xl p-4 outline-none resize-none leading-relaxed"
+                  />
+                  <p className="text-[11px] text-ink-500">
+                    Ini untuk persediaan struktur jadual pangkalan data sekali sahaja (bukan untuk import soalan harian — guna tab &quot;Import Pukal&quot; untuk itu).
+                  </p>
+                </div>
+              </div>
+            )}
+          </>
+        )}
+      </main>
+    </div>
+  );
+};
