@@ -14,6 +14,7 @@ export interface UserProfile {
   linked_user_id?: string;
   school_name?: string;
   team_id?: string;
+  password?: string;
 }
 
 export interface Subject {
