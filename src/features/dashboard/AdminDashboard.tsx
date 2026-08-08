@@ -1,11 +1,11 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { UserProfile, Subject, Paper, Section, Question, Choice } from '../../types';
-import { isSupabaseConfigured } from '../../lib/supabase';
+import { isSupabaseConfigured, getAllRegisteredUsers, resetUserPassword } from '../../lib/supabase';
 import { SUPABASE_SQL_SETUP_DDL } from '../../data/seedData';
 import { soundManager } from '../../lib/audio';
 import {
   Shield, Database, Plus, CheckCircle2, Code2, Copy, LogOut, Sun, Moon,
-  Pencil, Trash2, X, AlertCircle, Upload, ListChecks, Lock,
+  Pencil, Trash2, X, AlertCircle, Upload, ListChecks, Lock, Users, Search, KeyRound, RefreshCw,
 } from 'lucide-react';
 
 interface AdminDashboardProps {
@@ -63,8 +63,14 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
   isDarkMode,
   onToggleDarkMode,
 }) => {
-  const [activeTab, setActiveTab] = useState<'manual' | 'import' | 'setup'>('manual');
+  const [activeTab, setActiveTab] = useState<'manual' | 'import' | 'participants' | 'setup'>('manual');
   const [activeModuleTab, setActiveModuleTab] = useState<'sppim' | 'pksk' | 'uasa'>('sppim');
+
+  // ---- Participants (list / search / reset password) ----
+  const [participants, setParticipants] = useState<UserProfile[]>([]);
+  const [participantSearch, setParticipantSearch] = useState('');
+  const [loadingParticipants, setLoadingParticipants] = useState(false);
+  const [resetResult, setResetResult] = useState<{ userId: string; password: string } | null>(null);
 
   // ---- Manual Add / Update form state ----
   const [editingId, setEditingId] = useState<string | null>(null);
@@ -216,6 +222,36 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
     setTimeout(() => setCopiedSql(false), 2500);
   };
 
+  const loadParticipants = async () => {
+    setLoadingParticipants(true);
+    try {
+      const all = await getAllRegisteredUsers();
+      setParticipants(all.filter((u) => u.role !== 'admin'));
+    } finally {
+      setLoadingParticipants(false);
+    }
+  };
+
+  useEffect(() => {
+    if (activeTab === 'participants') {
+      loadParticipants();
+    }
+  }, [activeTab]);
+
+  const handleResetPassword = (participant: UserProfile) => {
+    if (!confirm(`Reset kata laluan untuk ${participant.name} (${participant.login_id})?\n\nKata laluan lama akan tidak sah lagi.`)) return;
+    soundManager.playClick();
+    const newPassword = resetUserPassword(participant.id);
+    setResetResult({ userId: participant.id, password: newPassword });
+    soundManager.playLevelUp();
+  };
+
+  const filteredParticipants = participants.filter((p) => {
+    const q = participantSearch.trim().toLowerCase();
+    if (!q) return true;
+    return p.name.toLowerCase().includes(q) || p.login_id.toLowerCase().includes(q);
+  });
+
   return (
     <div className="min-h-screen bg-cream-100">
       {/* Header — dedicated protected-route shell, same pattern as Parent portal */}
@@ -305,10 +341,11 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
         ) : (
           <>
             {/* Tab Switcher */}
-            <div className="grid grid-cols-3 bg-cream-200 p-1 rounded-2xl">
+            <div className="grid grid-cols-4 bg-cream-200 p-1 rounded-2xl">
               {[
                 { id: 'manual', label: 'Borang Manual', icon: Plus },
                 { id: 'import', label: 'Import Pukal', icon: Upload },
+                { id: 'participants', label: 'Peserta', icon: Users },
                 { id: 'setup', label: 'Skrip SQL Setup', icon: Database },
               ].map((tab) => (
                 <button
@@ -508,7 +545,90 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
               </div>
             )}
 
-            {/* TAB 3: SQL Setup Script (Supabase table setup — separate from question import) */}
+            {/* TAB 3: Participants — search, view, reset password */}
+            {activeTab === 'participants' && (
+              <div className="bg-cream-50 border border-sand-200 rounded-3xl p-5 space-y-4">
+                <div className="flex items-center justify-between">
+                  <h3 className="text-sm font-bold text-ink-900 flex items-center gap-2">
+                    <Users className="w-4 h-4 text-mist-500" />
+                    <span>Senarai Peserta ({participants.length})</span>
+                  </h3>
+                  <button
+                    onClick={loadParticipants}
+                    className="p-2 rounded-lg bg-cream-100 hover:bg-cream-200 text-ink-500 transition-colors"
+                    title="Muat Semula"
+                  >
+                    <RefreshCw className={`w-3.5 h-3.5 ${loadingParticipants ? 'animate-spin' : ''}`} />
+                  </button>
+                </div>
+
+                <div className="relative">
+                  <Search className="w-4 h-4 text-ink-300 absolute left-3.5 top-3.5 pointer-events-none" />
+                  <input
+                    type="text"
+                    value={participantSearch}
+                    onChange={(e) => setParticipantSearch(e.target.value)}
+                    placeholder="Cari nama atau ID Username..."
+                    className="w-full pl-10 pr-4 py-2.5 bg-cream-100 border border-sand-300 focus:border-mist-400 text-ink-900 text-sm rounded-xl outline-none transition-colors"
+                  />
+                </div>
+
+                {resetResult && (
+                  <div className="p-4 bg-sage-100 border border-sage-200 rounded-2xl space-y-1.5">
+                    <div className="flex items-center gap-2 text-sage-600 font-bold text-xs">
+                      <CheckCircle2 className="w-4 h-4" />
+                      <span>Kata Laluan Baru Berjaya Dijana</span>
+                    </div>
+                    <div className="flex items-center gap-2">
+                      <span className="text-xs text-ink-700">Bagitahu pelajar PIN baru ini:</span>
+                      <span className="font-mono font-bold text-lg text-sage-600 bg-cream-50 px-3 py-1 rounded-lg tracking-widest">
+                        {resetResult.password}
+                      </span>
+                    </div>
+                  </div>
+                )}
+
+                <div className="space-y-2 max-h-96 overflow-y-auto pr-1">
+                  {loadingParticipants ? (
+                    <div className="text-center py-8 text-xs text-ink-500">Memuatkan senarai peserta...</div>
+                  ) : filteredParticipants.length === 0 ? (
+                    <div className="text-center py-8 text-xs text-ink-500">Tiada peserta dijumpai.</div>
+                  ) : (
+                    filteredParticipants.map((p) => (
+                      <div key={p.id} className="p-3.5 bg-cream-100 border border-sand-200 rounded-2xl flex items-center justify-between gap-3">
+                        <div className="flex items-center gap-3 min-w-0">
+                          <div className="w-9 h-9 rounded-xl bg-mist-100 text-mist-600 flex items-center justify-center font-bold text-xs shrink-0">
+                            {p.name.charAt(0).toUpperCase()}
+                          </div>
+                          <div className="min-w-0">
+                            <div className="text-sm font-bold text-ink-900 truncate">{p.name}</div>
+                            <div className="flex items-center gap-2 text-[11px] text-ink-500">
+                              <span className="font-mono">{p.login_id}</span>
+                              <span className="capitalize px-1.5 py-0.5 bg-cream-200 rounded text-[10px] font-bold">{p.role || 'student'}</span>
+                            </div>
+                          </div>
+                        </div>
+
+                        <button
+                          onClick={() => handleResetPassword(p)}
+                          className="px-3 py-2 bg-cream-50 hover:bg-honey-100 text-honey-500 border border-sand-200 hover:border-honey-300 rounded-xl text-xs font-bold flex items-center gap-1.5 transition-colors shrink-0"
+                          title="Reset Kata Laluan"
+                        >
+                          <KeyRound className="w-3.5 h-3.5" />
+                          <span className="hidden sm:inline">Reset PIN</span>
+                        </button>
+                      </div>
+                    ))
+                  )}
+                </div>
+
+                <p className="text-[11px] text-ink-500">
+                  Nota: Reset PIN menjana kata laluan 6-digit baru serta-merta. Kata laluan lama tidak lagi sah.
+                </p>
+              </div>
+            )}
+
+            {/* TAB 4: SQL Setup Script (Supabase table setup — separate from question import) */}
             {activeTab === 'setup' && (
               <div className="space-y-4">
                 <div className={`p-4 rounded-2xl border flex items-center gap-3 ${isSupabaseConfigured ? 'bg-sage-100 border-sage-200 text-sage-600' : 'bg-honey-100 border-honey-200 text-honey-500'}`}>

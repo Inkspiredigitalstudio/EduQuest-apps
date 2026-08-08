@@ -2,7 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { UserProfile, Question, BattleRoom, Subject, Paper, Section } from '../../types';
 import { createBattleRoom, joinBattleRoom } from '../../lib/supabase';
 import { soundManager } from '../../lib/audio';
-import { Swords, Users, Play, Trophy, CheckCircle2, XCircle, Sparkles, X, Copy, Clock, AlertCircle, BookOpen } from 'lucide-react';
+import { Swords, Play, Trophy, CheckCircle2, XCircle, Sparkles, X, Copy, Clock, AlertCircle, BookOpen } from 'lucide-react';
 
 interface BattleLobbyModalProps {
   isOpen: boolean;
@@ -16,14 +16,14 @@ interface BattleLobbyModalProps {
 }
 
 const TOPICS = [
-  { id: 'all', name: 'Semua Tajuk', icon: '🌟', color: 'from-amber-500 to-rose-500' },
-  { id: 'sub-akidah', name: 'Akidah', icon: '🛡️', color: 'from-emerald-500 to-teal-600' },
-  { id: 'sub-fekah', name: 'Fekah', icon: '📖', color: 'from-blue-500 to-indigo-600' },
-  { id: 'sub-akhlak', name: 'Akhlak', icon: '💖', color: 'from-purple-500 to-pink-600' },
-  { id: 'sub-sirah', name: 'Sirah', icon: '🧭', color: 'from-amber-600 to-orange-600' },
+  { id: 'all', name: 'Semua Tajuk', icon: '🌟' },
+  { id: 'sub-akidah', name: 'Akidah', icon: '🛡️' },
+  { id: 'sub-fekah', name: 'Fekah', icon: '📖' },
+  { id: 'sub-akhlak', name: 'Akhlak', icon: '💖' },
+  { id: 'sub-sirah', name: 'Sirah', icon: '🧭' },
 ];
 
-const QUESTION_TIME_LIMIT = 15; // 15 seconds per question
+const QUESTION_TIME_LIMIT = 15;
 
 export const BattleLobbyModal: React.FC<BattleLobbyModalProps> = ({
   isOpen,
@@ -41,10 +41,8 @@ export const BattleLobbyModal: React.FC<BattleLobbyModalProps> = ({
   const [copiedCode, setCopiedCode] = useState(false);
   const [errorMsg, setErrorMsg] = useState('');
 
-  // Battle Config state
   const [selectedTopic, setSelectedTopic] = useState<string>('all');
 
-  // Battle Quiz state
   const [battleQuestions, setBattleQuestions] = useState<Question[]>([]);
   const [currentQIndex, setCurrentQIndex] = useState(0);
   const [myScore, setMyScore] = useState(0);
@@ -53,7 +51,6 @@ export const BattleLobbyModal: React.FC<BattleLobbyModalProps> = ({
   const [selectedChoiceId, setSelectedChoiceId] = useState<string | null>(null);
   const [isTimeout, setIsTimeout] = useState(false);
 
-  // Timer state
   const [timeLeft, setTimeLeft] = useState<number>(QUESTION_TIME_LIMIT);
 
   useEffect(() => {
@@ -74,12 +71,10 @@ export const BattleLobbyModal: React.FC<BattleLobbyModalProps> = ({
     }
   }, [isOpen]);
 
-  // Countdown timer effect
   useEffect(() => {
     if (mode !== 'playing' || selectedChoiceId !== null || isTimeout) return;
 
     if (timeLeft <= 0) {
-      // Time's up for current question
       handleTimeout();
       return;
     }
@@ -98,11 +93,8 @@ export const BattleLobbyModal: React.FC<BattleLobbyModalProps> = ({
     setIsTimeout(true);
     setSelectedChoiceId('TIMEOUT_CHOICE');
 
-    // Simulated Opponent AI Response on timeout
     const oppCorrect = Math.random() > 0.4;
-    if (oppCorrect) {
-      setOpponentScore((prev) => prev + 1);
-    }
+    if (oppCorrect) setOpponentScore((prev) => prev + 1);
 
     setTimeout(() => {
       moveToNextQuestion();
@@ -131,7 +123,6 @@ export const BattleLobbyModal: React.FC<BattleLobbyModalProps> = ({
     setActiveRoom(room);
   };
 
-  // Helper to filter questions by topic
   const getFilteredQuestions = () => {
     if (selectedTopic === 'all') return questions;
 
@@ -139,18 +130,12 @@ export const BattleLobbyModal: React.FC<BattleLobbyModalProps> = ({
       const sec = sections.find((s) => s.id === q.section_id);
       if (sec) {
         const pap = papers.find((p) => p.id === sec.paper_id);
-        if (pap) {
-          return pap.subject_id === selectedTopic;
-        }
+        if (pap) return pap.subject_id === selectedTopic;
       }
-      // Fallback text check
       const topicObj = TOPICS.find((t) => t.id === selectedTopic);
       if (topicObj) {
         const keyword = topicObj.name.toLowerCase();
-        return (
-          q.question_text.toLowerCase().includes(keyword) ||
-          (q.explanation && q.explanation.toLowerCase().includes(keyword))
-        );
+        return q.question_text.toLowerCase().includes(keyword) || (q.explanation && q.explanation.toLowerCase().includes(keyword));
       }
       return true;
     });
@@ -185,7 +170,6 @@ export const BattleLobbyModal: React.FC<BattleLobbyModalProps> = ({
       setIsTimeout(false);
       setTimeLeft(QUESTION_TIME_LIMIT);
     } else {
-      // Finish battle
       soundManager.playLevelUp();
       setMode('result');
     }
@@ -202,11 +186,8 @@ export const BattleLobbyModal: React.FC<BattleLobbyModalProps> = ({
       soundManager.playClick();
     }
 
-    // Simulated Opponent AI Response
     const oppCorrect = Math.random() > 0.35;
-    if (oppCorrect) {
-      setOpponentScore((prev) => prev + 1);
-    }
+    if (oppCorrect) setOpponentScore((prev) => prev + 1);
 
     setTimeout(() => {
       moveToNextQuestion();
@@ -217,24 +198,20 @@ export const BattleLobbyModal: React.FC<BattleLobbyModalProps> = ({
   const timerPercent = Math.max(0, Math.min(100, (timeLeft / QUESTION_TIME_LIMIT) * 100));
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-950/85 backdrop-blur-md p-4 overflow-y-auto">
-      <div className="relative w-full max-w-xl bg-slate-900 border border-slate-800 rounded-3xl shadow-2xl overflow-hidden my-auto p-6 space-y-6 max-h-[90vh] flex flex-col">
-        {/* Header */}
-        <div className="flex items-center justify-between border-b border-slate-800 pb-4 shrink-0">
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 backdrop-blur-sm p-4 overflow-y-auto">
+      <div className="relative w-full max-w-xl bg-cream-50 border border-sand-200 rounded-3xl shadow-xl overflow-hidden my-auto p-6 space-y-6 max-h-[90vh] flex flex-col">
+        <div className="flex items-center justify-between border-b border-sand-200 pb-4 shrink-0">
           <div className="flex items-center gap-3">
-            <div className="w-10 h-10 rounded-xl bg-gradient-to-tr from-rose-600 to-amber-500 flex items-center justify-center text-white shadow-lg shadow-rose-500/20 font-black">
-              <Swords className="w-5 h-5 animate-bounce" />
+            <div className="w-10 h-10 rounded-xl bg-clay-500 flex items-center justify-center text-white">
+              <Swords className="w-5 h-5" />
             </div>
             <div>
-              <h2 className="text-xl font-black text-white">Battle 1v1 Interaktif</h2>
-              <p className="text-xs text-slate-400">10 Soalan Pantas • Pilih Tajuk • Cabaran Masa Nya!</p>
+              <h2 className="text-xl font-display font-bold text-ink-900">Battle 1v1 Interaktif</h2>
+              <p className="text-xs text-ink-500">10 Soalan Pantas • Pilih Tajuk • Cabaran Masa!</p>
             </div>
           </div>
 
-          <button
-            onClick={onClose}
-            className="p-2 rounded-xl text-slate-400 hover:text-white bg-slate-800 hover:bg-slate-700 transition-colors"
-          >
+          <button onClick={onClose} className="p-2 rounded-xl text-ink-500 hover:text-ink-900 bg-cream-100 hover:bg-cream-200 transition-colors">
             <X className="w-5 h-5" />
           </button>
         </div>
@@ -242,10 +219,9 @@ export const BattleLobbyModal: React.FC<BattleLobbyModalProps> = ({
         {/* LOBBY MODE */}
         {mode === 'lobby' && (
           <div className="space-y-5 overflow-y-auto pr-1 flex-1">
-            {/* Topic Selection */}
             <div className="space-y-2">
-              <label className="text-xs font-bold text-amber-300 uppercase tracking-wider flex items-center gap-1.5">
-                <BookOpen className="w-3.5 h-3.5 text-amber-400" />
+              <label className="text-xs font-bold text-ink-700 uppercase tracking-wide flex items-center gap-1.5">
+                <BookOpen className="w-3.5 h-3.5 text-honey-500" />
                 <span>Pilih Tajuk Soalan Battle (10 Soalan)</span>
               </label>
 
@@ -261,10 +237,8 @@ export const BattleLobbyModal: React.FC<BattleLobbyModalProps> = ({
                         setSelectedTopic(topic.id);
                         setErrorMsg('');
                       }}
-                      className={`p-2.5 rounded-xl border text-xs font-bold transition-all flex items-center gap-2 ${
-                        isSelected
-                          ? 'bg-slate-800 border-amber-400 text-amber-300 shadow-md ring-1 ring-amber-400/50'
-                          : 'bg-slate-950/70 border-slate-800 text-slate-400 hover:text-slate-200 hover:border-slate-700'
+                      className={`p-2.5 rounded-xl border text-xs font-bold transition-colors flex items-center gap-2 ${
+                        isSelected ? 'bg-honey-100 border-honey-400 text-honey-500' : 'bg-cream-100 border-sand-200 text-ink-500 hover:border-sand-300'
                       }`}
                     >
                       <span className="text-base">{topic.icon}</span>
@@ -277,26 +251,24 @@ export const BattleLobbyModal: React.FC<BattleLobbyModalProps> = ({
 
             {!activeRoom ? (
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 pt-2">
-                {/* Create Room */}
-                <div className="bg-slate-800/80 border border-slate-700 p-5 rounded-2xl text-center space-y-3 flex flex-col justify-between">
+                <div className="bg-cream-100 border border-sand-200 p-5 rounded-2xl text-center space-y-3 flex flex-col justify-between">
                   <div>
-                    <h3 className="text-sm font-bold text-white">Bina Bilik Battle Baru</h3>
-                    <p className="text-xs text-slate-400 mt-1">Dapatkan Kod Bilik 6-Aksara & jemput rakan berlawan.</p>
+                    <h3 className="text-sm font-bold text-ink-900">Bina Bilik Battle Baru</h3>
+                    <p className="text-xs text-ink-500 mt-1">Dapatkan Kod Bilik 6-Aksara &amp; jemput rakan berlawan.</p>
                   </div>
                   <button
                     onClick={handleCreateRoom}
-                    className="w-full py-3 px-4 bg-gradient-to-r from-rose-600 to-amber-500 hover:from-rose-500 hover:to-amber-400 text-white font-extrabold rounded-xl text-xs shadow-md transition-all flex items-center justify-center gap-2"
+                    className="w-full py-3 px-4 bg-clay-500 hover:bg-clay-500/90 text-white font-bold rounded-xl text-xs transition-colors flex items-center justify-center gap-2"
                   >
                     <Swords className="w-4 h-4" />
                     <span>Cipta Bilik Battle</span>
                   </button>
                 </div>
 
-                {/* Join Room */}
-                <div className="bg-slate-800/80 border border-slate-700 p-5 rounded-2xl text-center space-y-3 flex flex-col justify-between">
+                <div className="bg-cream-100 border border-sand-200 p-5 rounded-2xl text-center space-y-3 flex flex-col justify-between">
                   <div>
-                    <h3 className="text-sm font-bold text-white">Sertai Bilik Rakan</h3>
-                    <p className="text-xs text-slate-400 mt-1">Masukkan Kod Bilik yang diberikan oleh rakan.</p>
+                    <h3 className="text-sm font-bold text-ink-900">Sertai Bilik Rakan</h3>
+                    <p className="text-xs text-ink-500 mt-1">Masukkan Kod Bilik yang diberikan oleh rakan.</p>
                   </div>
                   <div className="space-y-2">
                     <input
@@ -304,22 +276,18 @@ export const BattleLobbyModal: React.FC<BattleLobbyModalProps> = ({
                       value={joinCodeInput}
                       onChange={(e) => setJoinCodeInput(e.target.value.toUpperCase())}
                       placeholder="Kod Bilik (cth: BTL-1234)"
-                      className="w-full bg-slate-950 border border-slate-700 rounded-xl px-3 py-2 text-xs font-mono font-bold text-amber-300 text-center uppercase outline-none focus:border-amber-400"
+                      className="w-full bg-cream-50 border border-sand-300 rounded-xl px-3 py-2 text-xs font-mono font-bold text-honey-500 text-center uppercase outline-none focus:border-honey-400"
                     />
-                    <button
-                      onClick={handleJoinRoom}
-                      className="w-full py-2.5 px-4 bg-slate-700 hover:bg-slate-600 text-white font-bold rounded-xl text-xs transition-all"
-                    >
+                    <button onClick={handleJoinRoom} className="w-full py-2.5 px-4 bg-cream-200 hover:bg-sand-300 text-ink-900 font-bold rounded-xl text-xs transition-colors">
                       Sertai Bilik
                     </button>
                   </div>
                 </div>
               </div>
             ) : (
-              /* Active Waiting Room */
-              <div className="bg-slate-950/80 border border-amber-500/40 rounded-2xl p-5 text-center space-y-4">
-                <span className="text-xs uppercase font-bold text-slate-400 tracking-wider">Kod Bilik Battle Anda</span>
-                <div className="text-3xl font-black font-mono text-amber-400 tracking-widest">{activeRoom.code}</div>
+              <div className="bg-cream-100 border border-honey-300 rounded-2xl p-5 text-center space-y-4">
+                <span className="text-xs uppercase font-bold text-ink-500 tracking-wide">Kod Bilik Battle Anda</span>
+                <div className="text-3xl font-display font-bold font-mono text-honey-500 tracking-widest">{activeRoom.code}</div>
 
                 <button
                   onClick={() => {
@@ -328,109 +296,91 @@ export const BattleLobbyModal: React.FC<BattleLobbyModalProps> = ({
                     soundManager.playCoin();
                     setTimeout(() => setCopiedCode(false), 2000);
                   }}
-                  className="text-xs font-semibold text-amber-300 hover:text-amber-200 flex items-center justify-center gap-1 mx-auto bg-amber-500/10 px-3 py-1.5 rounded-lg border border-amber-500/30"
+                  className="text-xs font-semibold text-honey-500 hover:text-honey-500/80 flex items-center justify-center gap-1 mx-auto bg-honey-100 px-3 py-1.5 rounded-lg"
                 >
                   <Copy className="w-3.5 h-3.5" />
                   {copiedCode ? 'Kod Disalin!' : 'Salin Kod Bilik'}
                 </button>
 
-                <div className="p-3 bg-slate-900 rounded-xl border border-slate-800 text-xs text-slate-300 flex items-center justify-around">
-                  <span className="font-bold text-sky-400">Pemain 1: {user.name}</span>
-                  <span className="text-slate-500">VS</span>
-                  <span className="font-bold text-rose-400">Pemain 2: {activeRoom.guest_name || 'Menunggu / Lawan AI...'}</span>
+                <div className="p-3 bg-cream-50 rounded-xl border border-sand-200 text-xs text-ink-700 flex items-center justify-around">
+                  <span className="font-bold text-mist-600">Pemain 1: {user.name}</span>
+                  <span className="text-ink-300">VS</span>
+                  <span className="font-bold text-clay-500">Pemain 2: {activeRoom.guest_name || 'Menunggu / Lawan AI...'}</span>
                 </div>
 
                 <button
                   onClick={handleStartBattle}
-                  className="w-full py-3.5 bg-gradient-to-r from-emerald-600 to-teal-500 hover:from-emerald-500 hover:to-teal-400 text-slate-950 font-black rounded-2xl text-sm shadow-lg shadow-emerald-500/25 transition-all flex items-center justify-center gap-2"
+                  className="w-full py-3.5 bg-sage-500 hover:bg-sage-600 text-white font-bold rounded-2xl text-sm transition-colors flex items-center justify-center gap-2"
                 >
-                  <Play className="w-5 h-5 fill-slate-950" />
+                  <Play className="w-5 h-5 fill-white" />
                   <span>Mula Cabaran Battle 10 Soalan!</span>
                 </button>
               </div>
             )}
 
-            {errorMsg && <p className="text-xs text-rose-400 font-bold text-center">{errorMsg}</p>}
+            {errorMsg && <p className="text-xs text-clay-500 font-bold text-center">{errorMsg}</p>}
           </div>
         )}
 
         {/* PLAYING BATTLE MODE */}
         {mode === 'playing' && currentQ && (
           <div className="space-y-4 overflow-y-auto pr-1 flex-1">
-            {/* Live Match Meter & Timer */}
             <div className="space-y-2">
-              <div className="grid grid-cols-2 gap-3 bg-slate-950 p-3 rounded-2xl border border-slate-800 text-center">
+              <div className="grid grid-cols-2 gap-3 bg-cream-100 p-3 rounded-2xl border border-sand-200 text-center">
                 <div>
-                  <span className="text-[10px] text-slate-400 font-bold uppercase block">{user.name}</span>
-                  <span className="text-xl font-black text-sky-400">{myScore} Mata</span>
+                  <span className="text-[10px] text-ink-500 font-bold uppercase block">{user.name}</span>
+                  <span className="text-xl font-display font-bold text-mist-600">{myScore} Mata</span>
                 </div>
                 <div>
-                  <span className="text-[10px] text-slate-400 font-bold uppercase block">{opponentName}</span>
-                  <span className="text-xl font-black text-rose-400">{opponentScore} Mata</span>
+                  <span className="text-[10px] text-ink-500 font-bold uppercase block">{opponentName}</span>
+                  <span className="text-xl font-display font-bold text-clay-500">{opponentScore} Mata</span>
                 </div>
               </div>
 
-              {/* Urgency Countdown Timer Bar */}
-              <div className="bg-slate-950 border border-slate-800 rounded-xl p-2.5 space-y-1.5">
-                <div className="flex items-center justify-between text-xs font-black">
-                  <div className="flex items-center gap-1.5 text-amber-400">
-                    <Clock className={`w-4 h-4 ${timeLeft <= 5 ? 'animate-bounce text-rose-500' : ''}`} />
+              <div className="bg-cream-100 border border-sand-200 rounded-xl p-2.5 space-y-1.5">
+                <div className="flex items-center justify-between text-xs font-bold">
+                  <div className="flex items-center gap-1.5 text-honey-500">
+                    <Clock className="w-4 h-4" />
                     <span>Masa Menjawab</span>
                   </div>
-                  <span
-                    className={`font-mono text-sm ${
-                      timeLeft <= 4
-                        ? 'text-rose-500 font-black animate-pulse'
-                        : timeLeft <= 8
-                        ? 'text-amber-400'
-                        : 'text-emerald-400'
-                    }`}
-                  >
+                  <span className={`font-mono text-sm ${timeLeft <= 4 ? 'text-clay-500 font-bold' : timeLeft <= 8 ? 'text-honey-500' : 'text-sage-600'}`}>
                     {timeLeft}s
                   </span>
                 </div>
 
-                <div className="w-full bg-slate-800 h-2 rounded-full overflow-hidden">
+                <div className="w-full bg-cream-200 h-2 rounded-full overflow-hidden">
                   <div
-                    className={`h-full transition-all duration-1000 ${
-                      timeLeft <= 4 ? 'bg-rose-500' : timeLeft <= 8 ? 'bg-amber-400' : 'bg-emerald-400'
-                    }`}
+                    className={`h-full transition-all duration-1000 ${timeLeft <= 4 ? 'bg-clay-400' : timeLeft <= 8 ? 'bg-honey-400' : 'bg-sage-400'}`}
                     style={{ width: `${timerPercent}%` }}
                   />
                 </div>
               </div>
             </div>
 
-            {/* Question Card */}
-            <div className="bg-slate-800/80 border border-slate-700/80 p-5 rounded-2xl space-y-3 relative overflow-hidden">
-              <div className="flex items-center justify-between text-xs text-slate-400">
-                <span className="font-bold text-amber-400">
-                  Soalan {currentQIndex + 1} / {battleQuestions.length}
-                </span>
-                <span className="text-[11px] font-bold text-slate-400 uppercase tracking-wider">
+            <div className="bg-cream-100 border border-sand-200 p-5 rounded-2xl space-y-3">
+              <div className="flex items-center justify-between text-xs text-ink-500">
+                <span className="font-bold text-honey-500">Soalan {currentQIndex + 1} / {battleQuestions.length}</span>
+                <span className="text-[11px] font-bold uppercase tracking-wide">
                   {TOPICS.find((t) => t.id === selectedTopic)?.name || 'Pendidikan Islam'}
                 </span>
               </div>
-              <h3 className="text-base font-bold text-white">{currentQ.question_text}</h3>
+              <h3 className="text-base font-bold text-ink-900">{currentQ.question_text}</h3>
 
               {isTimeout && (
-                <div className="bg-rose-500/20 border border-rose-500/50 p-2 rounded-xl text-xs text-rose-300 font-bold flex items-center justify-center gap-2 animate-pulse">
-                  <AlertCircle className="w-4 h-4 text-rose-400" />
+                <div className="bg-clay-100 p-2 rounded-xl text-xs text-clay-500 font-bold flex items-center justify-center gap-2">
+                  <AlertCircle className="w-4 h-4" />
                   <span>Masa Tamat! Jawapan tidak dihantar.</span>
                 </div>
               )}
             </div>
 
-            {/* Choices Grid */}
             <div className="grid grid-cols-1 gap-2.5">
               {currentQ.choices.map((choice) => {
                 const isSelected = selectedChoiceId === choice.id;
-                let btnStyle = 'bg-slate-800 hover:bg-slate-700 text-white border-slate-700';
+                let btnStyle = 'bg-cream-100 hover:bg-cream-200 text-ink-900 border-sand-200';
 
                 if (isSelected) {
-                  btnStyle = choice.is_correct
-                    ? 'bg-emerald-600 text-white border-emerald-400'
-                    : 'bg-rose-600 text-white border-rose-400';
+                  btnStyle = choice.is_correct ? 'bg-sage-500 text-white border-sage-500' : 'bg-clay-500 text-white border-clay-500';
                 }
 
                 return (
@@ -438,11 +388,11 @@ export const BattleLobbyModal: React.FC<BattleLobbyModalProps> = ({
                     key={choice.id}
                     onClick={() => handleAnswerChoice(choice.id, choice.is_correct)}
                     disabled={selectedChoiceId !== null || isTimeout}
-                    className={`p-3.5 rounded-2xl text-xs font-extrabold text-left border transition-all flex items-center justify-between ${btnStyle}`}
+                    className={`p-3.5 rounded-2xl text-xs font-bold text-left border transition-colors flex items-center justify-between ${btnStyle}`}
                   >
                     <span>{choice.option_text}</span>
                     {isSelected && choice.id !== 'TIMEOUT_CHOICE' && (
-                      choice.is_correct ? <CheckCircle2 className="w-4 h-4 text-emerald-200" /> : <XCircle className="w-4 h-4 text-rose-200" />
+                      choice.is_correct ? <CheckCircle2 className="w-4 h-4" /> : <XCircle className="w-4 h-4" />
                     )}
                   </button>
                 );
@@ -454,21 +404,21 @@ export const BattleLobbyModal: React.FC<BattleLobbyModalProps> = ({
         {/* RESULT MODE */}
         {mode === 'result' && (
           <div className="text-center space-y-5 my-auto">
-            <div className="w-16 h-16 rounded-3xl bg-gradient-to-tr from-amber-500 to-yellow-400 flex items-center justify-center mx-auto text-slate-950 shadow-xl shadow-amber-500/20">
-              <Trophy className="w-8 h-8 animate-bounce" />
+            <div className="w-16 h-16 rounded-3xl bg-honey-400 flex items-center justify-center mx-auto text-white">
+              <Trophy className="w-8 h-8" />
             </div>
 
             <div>
-              <h3 className="text-2xl font-black text-white">
+              <h3 className="text-2xl font-display font-bold text-ink-900">
                 {myScore > opponentScore ? 'Kemenangan Manis! 🏆' : myScore === opponentScore ? 'Keputusan Seri! 🤝' : 'Usaha Yang Bagus! 💪'}
               </h3>
-              <p className="text-xs text-slate-400 mt-1">
-                Markah Akhir: <span className="font-bold text-sky-400">{myScore}</span> / {battleQuestions.length} vs <span className="font-bold text-rose-400">{opponentScore}</span> ({opponentName})
+              <p className="text-xs text-ink-500 mt-1">
+                Markah Akhir: <span className="font-bold text-mist-600">{myScore}</span> / {battleQuestions.length} vs <span className="font-bold text-clay-500">{opponentScore}</span> ({opponentName})
               </p>
             </div>
 
-            <div className="p-4 bg-slate-950 border border-slate-800 rounded-2xl text-xs text-amber-300 font-bold flex items-center justify-center gap-2">
-              <Sparkles className="w-4 h-4 text-amber-400" />
+            <div className="p-4 bg-honey-100 rounded-2xl text-xs text-honey-500 font-bold flex items-center justify-center gap-2">
+              <Sparkles className="w-4 h-4" />
               <span>Ganjaran Battle: +75 XP & +50 Koin</span>
             </div>
 
@@ -478,9 +428,9 @@ export const BattleLobbyModal: React.FC<BattleLobbyModalProps> = ({
                 onFinishBattle(75, 50);
                 onClose();
               }}
-              className="w-full py-3.5 bg-gradient-to-r from-blue-600 to-sky-500 text-white font-black rounded-2xl text-sm shadow-lg shadow-blue-500/25 transition-all"
+              className="w-full py-3.5 bg-mist-500 hover:bg-mist-600 text-white font-bold rounded-2xl text-sm transition-colors"
             >
-              Tebus Ganjaran & Kembali
+              Tebus Ganjaran &amp; Kembali
             </button>
           </div>
         )}
@@ -488,4 +438,3 @@ export const BattleLobbyModal: React.FC<BattleLobbyModalProps> = ({
     </div>
   );
 };
-
