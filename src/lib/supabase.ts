@@ -220,6 +220,7 @@ export async function registerUser(
     streak_days: 1,
     role,
     invite_code: inviteCode,
+    password,
   };
 
   existingUsers.push(localProfile);
@@ -316,6 +317,12 @@ export async function loginUser(loginIdInput: string, passwordInput: string): Pr
   const found = existingUsers.find((u) => u.login_id.toUpperCase() === cleanLoginId);
 
   if (found) {
+    // Backward compatible: accounts created before password-tracking existed have no
+    // stored password, so they log in on ID alone (unchanged prior behaviour).
+    // Accounts with a stored password (new registrations, or reset by an admin) must match it.
+    if (found.password && found.password !== passwordInput) {
+      return { profile: null, error: 'ID Username atau Kata Laluan/PIN tidak sah. Sila semak semula.' };
+    }
     localStorage.setItem(LOCAL_USER_KEY, JSON.stringify(found));
     return { profile: found };
   }
@@ -344,6 +351,65 @@ export async function loginUser(loginIdInput: string, passwordInput: string): Pr
 // Backward compatible wrapper
 export async function loginStudent(loginIdInput: string, pin: string) {
   return loginUser(loginIdInput, pin);
+}
+
+// ------------------------- Admin: participant management -------------------------
+// Local-storage first (matches this app's existing user-storage model). If Supabase
+// is configured, also pulls its `users` table and merges by login_id so an admin
+// sees everyone regardless of which path each account was created through.
+export async function getAllRegisteredUsers(): Promise<UserProfile[]> {
+  const localUsers: UserProfile[] = JSON.parse(localStorage.getItem(LOCAL_USERS_LIST_KEY) || '[]');
+
+  if (isSupabaseConfigured && supabase) {
+    try {
+      const { data, error } = await supabase.from('users').select('*');
+      if (!error && data) {
+        const merged = new Map<string, UserProfile>();
+        localUsers.forEach((u) => merged.set(u.login_id.toUpperCase(), u));
+        data.forEach((row: any) => {
+          merged.set(row.login_id.toUpperCase(), {
+            id: row.id,
+            name: row.name,
+            login_id: row.login_id,
+            phone: row.phone || undefined,
+            coin: row.coin ?? 0,
+            xp: row.xp ?? 0,
+            level: row.level ?? 1,
+            created_at: row.created_at,
+            role: row.role,
+            invite_code: row.invite_code,
+          });
+        });
+        return Array.from(merged.values()).sort((a, b) => a.name.localeCompare(b.name));
+      }
+    } catch (e) {
+      console.warn('Could not fetch users from Supabase, showing local list only:', e);
+    }
+  }
+
+  return [...localUsers].sort((a, b) => a.name.localeCompare(b.name));
+}
+
+// Resets a user's password. Local-storage accounts: generates a new simple PIN,
+// stores it directly (this app's local-mode security model is intentionally
+// lightweight — see chat notes). Supabase-auth accounts can't safely have their
+// password changed from client-side code (would need a service_role key, which
+// must never ship in frontend code) — those should be reset from the Supabase
+// dashboard directly; this function only touches the local copy in that case.
+export function resetUserPassword(userId: string): string {
+  const newPassword = String(Math.floor(100000 + Math.random() * 900000)); // 6-digit PIN
+
+  const existingUsers: UserProfile[] = JSON.parse(localStorage.getItem(LOCAL_USERS_LIST_KEY) || '[]');
+  const updated = existingUsers.map((u) => (u.id === userId ? { ...u, password: newPassword } : u));
+  localStorage.setItem(LOCAL_USERS_LIST_KEY, JSON.stringify(updated));
+
+  // If this happens to be the currently active session, keep it in sync too
+  const active = getCurrentUser();
+  if (active && active.id === userId) {
+    localStorage.setItem(LOCAL_USER_KEY, JSON.stringify({ ...active, password: newPassword }));
+  }
+
+  return newPassword;
 }
 
 export function getCurrentUser(): UserProfile | null {
