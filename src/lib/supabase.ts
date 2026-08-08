@@ -948,6 +948,9 @@ export function respondFriendRequest(requestId: string, status: 'accepted' | 're
 }
 
 // ---------------- BATTLE ROOMS SYSTEM ----------------
+// Real cross-device 1v1: rooms live in Supabase so two different phones/devices
+// can actually see each other. Falls back to localStorage (same-device only,
+// effectively single-player) if Supabase isn't configured — see chat notes.
 const LOCAL_BATTLE_ROOMS_KEY = 'eduquest_battle_rooms';
 
 export function getBattleRooms(): BattleRoom[] {
@@ -958,8 +961,28 @@ export function getBattleRooms(): BattleRoom[] {
   }
 }
 
-export function createBattleRoom(host: UserProfile): BattleRoom {
+function mapDbRoom(row: any): BattleRoom {
+  return {
+    id: row.id,
+    code: row.code,
+    host_id: row.host_id,
+    host_name: row.host_name,
+    guest_id: row.guest_id || undefined,
+    guest_name: row.guest_name || undefined,
+    status: row.status,
+    host_score: row.host_score ?? 0,
+    guest_score: row.guest_score ?? 0,
+    host_finished: row.host_finished ?? false,
+    guest_finished: row.guest_finished ?? false,
+    question_ids: row.question_ids || [],
+    created_at: row.created_at,
+  };
+}
+
+export async function createBattleRoom(host: UserProfile, questionPool: Question[] = []): Promise<BattleRoom> {
   const code = 'BTL-' + Math.floor(1000 + Math.random() * 9000);
+  const questionIds = [...questionPool].sort(() => 0.5 - Math.random()).slice(0, 10).map((q) => q.id);
+
   const room: BattleRoom = {
     id: `room-${Date.now()}`,
     code,
@@ -968,8 +991,32 @@ export function createBattleRoom(host: UserProfile): BattleRoom {
     status: 'waiting',
     host_score: 0,
     guest_score: 0,
+    host_finished: false,
+    guest_finished: false,
+    question_ids: questionIds,
     created_at: new Date().toISOString(),
   };
+
+  if (isSupabaseConfigured && supabase) {
+    try {
+      const { error } = await supabase.from('battle_rooms').insert({
+        id: room.id,
+        code: room.code,
+        host_id: room.host_id,
+        host_name: room.host_name,
+        status: room.status,
+        question_ids: questionIds,
+        host_score: 0,
+        guest_score: 0,
+        host_finished: false,
+        guest_finished: false,
+      });
+      if (!error) return room;
+      console.warn('Supabase battle room insert failed, using local fallback:', error);
+    } catch (e) {
+      console.warn('Supabase battle room insert threw, using local fallback:', e);
+    }
+  }
 
   const rooms = getBattleRooms();
   rooms.push(room);
@@ -977,8 +1024,36 @@ export function createBattleRoom(host: UserProfile): BattleRoom {
   return room;
 }
 
-export function joinBattleRoom(code: string, guest: UserProfile): BattleRoom | null {
+export async function joinBattleRoom(code: string, guest: UserProfile): Promise<BattleRoom | null> {
   const cleanCode = code.trim().toUpperCase();
+
+  if (isSupabaseConfigured && supabase) {
+    try {
+      const { data: existing, error: findErr } = await supabase
+        .from('battle_rooms')
+        .select('*')
+        .eq('code', cleanCode)
+        .eq('status', 'waiting')
+        .maybeSingle();
+
+      if (!findErr && existing) {
+        const { data: updated, error: updateErr } = await supabase
+          .from('battle_rooms')
+          .update({ guest_id: guest.id, guest_name: guest.name, status: 'active' })
+          .eq('id', existing.id)
+          .select()
+          .single();
+
+        if (!updateErr && updated) return mapDbRoom(updated);
+      }
+      // Fall through to local only if nothing was found remotely either —
+      // otherwise a "not found" here is a real answer, not a reason to fall back.
+      if (!findErr && !existing) return null;
+    } catch (e) {
+      console.warn('Supabase battle room join threw, checking local fallback:', e);
+    }
+  }
+
   const rooms = getBattleRooms();
   const room = rooms.find((r) => r.code === cleanCode && r.status === 'waiting');
   if (room) {
@@ -989,5 +1064,65 @@ export function joinBattleRoom(code: string, guest: UserProfile): BattleRoom | n
     return room;
   }
   return null;
+}
+
+// Polls the current state of a room — call this every few seconds while a
+// battle is in progress so each player sees the opponent's live score.
+export async function getBattleRoomState(roomId: string): Promise<BattleRoom | null> {
+  if (isSupabaseConfigured && supabase) {
+    try {
+      const { data, error } = await supabase.from('battle_rooms').select('*').eq('id', roomId).maybeSingle();
+      if (!error && data) return mapDbRoom(data);
+    } catch (e) {
+      console.warn('Supabase battle room poll threw:', e);
+    }
+  }
+
+  const rooms = getBattleRooms();
+  return rooms.find((r) => r.id === roomId) || null;
+}
+
+// Updates this player's score on the shared room row (fire-and-forget from the
+// caller's point of view — battle gameplay shouldn't block on network latency).
+export async function updateBattleScore(roomId: string, isHost: boolean, newScore: number): Promise<void> {
+  const field = isHost ? 'host_score' : 'guest_score';
+
+  if (isSupabaseConfigured && supabase) {
+    try {
+      await supabase.from('battle_rooms').update({ [field]: newScore }).eq('id', roomId);
+      return;
+    } catch (e) {
+      console.warn('Supabase battle score update threw:', e);
+    }
+  }
+
+  const rooms = getBattleRooms();
+  const room = rooms.find((r) => r.id === roomId);
+  if (room) {
+    if (isHost) room.host_score = newScore;
+    else room.guest_score = newScore;
+    localStorage.setItem(LOCAL_BATTLE_ROOMS_KEY, JSON.stringify(rooms));
+  }
+}
+
+export async function finishBattleRoom(roomId: string, isHost: boolean): Promise<void> {
+  const field = isHost ? 'host_finished' : 'guest_finished';
+
+  if (isSupabaseConfigured && supabase) {
+    try {
+      await supabase.from('battle_rooms').update({ [field]: true }).eq('id', roomId);
+      return;
+    } catch (e) {
+      console.warn('Supabase battle finish update threw:', e);
+    }
+  }
+
+  const rooms = getBattleRooms();
+  const room = rooms.find((r) => r.id === roomId);
+  if (room) {
+    if (isHost) room.host_finished = true;
+    else room.guest_finished = true;
+    localStorage.setItem(LOCAL_BATTLE_ROOMS_KEY, JSON.stringify(rooms));
+  }
 }
 
