@@ -2,7 +2,11 @@ import React, { useState } from 'react';
 import { registerUser, loginUser } from '../../lib/supabase';
 import { UserProfile } from '../../types';
 import { soundManager } from '../../lib/audio';
-import { User, Lock, Phone, Sparkles, Key, CheckCircle2, Copy, AlertCircle, ArrowRight, X, GraduationCap, Heart, RefreshCw } from 'lucide-react';
+import { User, Lock, Phone, Sparkles, Key, CheckCircle2, Copy, AlertCircle, ArrowRight, X, GraduationCap, Heart, RefreshCw, HelpCircle, Send, ArrowLeft } from 'lucide-react';
+
+// Admin support inbox for "Forgot Password" requests. Change this to the real
+// admin email address before going live.
+const ADMIN_SUPPORT_EMAIL = 'admin@eduquest.example';
 
 interface AuthModalProps {
   isOpen: boolean;
@@ -11,7 +15,7 @@ interface AuthModalProps {
 }
 
 export const AuthModal: React.FC<AuthModalProps> = ({ isOpen, onClose, onSuccess }) => {
-  const [mode, setMode] = useState<'register' | 'login'>('register');
+  const [mode, setMode] = useState<'register' | 'login' | 'forgot'>('register');
   const [displayName, setDisplayName] = useState('');
   const [customUsername, setCustomUsername] = useState('');
   const [password, setPassword] = useState('');
@@ -21,6 +25,10 @@ export const AuthModal: React.FC<AuthModalProps> = ({ isOpen, onClose, onSuccess
   const [loginIdInput, setLoginIdInput] = useState('');
   const [errorMsg, setErrorMsg] = useState('');
   const [loading, setLoading] = useState(false);
+
+  const [forgotName, setForgotName] = useState('');
+  const [forgotLoginId, setForgotLoginId] = useState('');
+  const [forgotSent, setForgotSent] = useState(false);
 
   const [registeredProfile, setRegisteredProfile] = useState<UserProfile | null>(null);
   const [registeredId, setRegisteredId] = useState<string | null>(null);
@@ -106,6 +114,20 @@ export const AuthModal: React.FC<AuthModalProps> = ({ isOpen, onClose, onSuccess
       soundManager.playCoin();
       setTimeout(() => setCopied(false), 2000);
     }
+  };
+
+  const handleForgotSubmit = (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!forgotName.trim() || !forgotLoginId.trim()) return;
+
+    soundManager.playClick();
+
+    const subject = `Permintaan Reset Kata Laluan — ${forgotLoginId.trim().toUpperCase()}`;
+    const body = `Assalamualaikum Admin,\n\nSaya lupa kata laluan akaun EduQuest saya.\n\nNama: ${forgotName.trim()}\nID Username: ${forgotLoginId.trim().toUpperCase()}\n\nSila bantu reset kata laluan saya. Terima kasih.`;
+    const mailtoUrl = `mailto:${ADMIN_SUPPORT_EMAIL}?subject=${encodeURIComponent(subject)}&body=${encodeURIComponent(body)}`;
+
+    window.location.href = mailtoUrl;
+    setForgotSent(true);
   };
 
   const handleQuickDemo = async () => {
@@ -346,7 +368,7 @@ export const AuthModal: React.FC<AuthModalProps> = ({ isOpen, onClose, onSuccess
                   {loading ? 'Mencipta Akaun...' : 'Daftar Akaun Sekarang'}
                 </button>
               </form>
-            ) : (
+            ) : mode === 'login' ? (
               <form onSubmit={handleLogin} className="space-y-4">
                 <div>
                   <label className="block text-xs font-bold text-ink-700 mb-1.5">ID Username / Login ID</label>
@@ -378,6 +400,20 @@ export const AuthModal: React.FC<AuthModalProps> = ({ isOpen, onClose, onSuccess
                   </div>
                 </div>
 
+                <div className="text-right -mt-1">
+                  <button
+                    type="button"
+                    onClick={() => {
+                      soundManager.playClick();
+                      setMode('forgot');
+                      setErrorMsg('');
+                    }}
+                    className="text-xs font-semibold text-mist-600 hover:text-mist-700"
+                  >
+                    Lupa Kata Laluan?
+                  </button>
+                </div>
+
                 <button
                   type="submit"
                   disabled={loading}
@@ -386,6 +422,87 @@ export const AuthModal: React.FC<AuthModalProps> = ({ isOpen, onClose, onSuccess
                   {loading ? 'Memproses...' : 'Log Masuk Akaun'}
                 </button>
               </form>
+            ) : (
+              <div className="space-y-4">
+                <button
+                  type="button"
+                  onClick={() => {
+                    soundManager.playClick();
+                    setMode('login');
+                    setForgotSent(false);
+                  }}
+                  className="text-xs font-semibold text-ink-500 hover:text-ink-700 flex items-center gap-1"
+                >
+                  <ArrowLeft className="w-3.5 h-3.5" />
+                  <span>Kembali ke Log Masuk</span>
+                </button>
+
+                {forgotSent ? (
+                  <div className="text-center space-y-3 py-4">
+                    <div className="w-14 h-14 bg-sage-100 border-2 border-sage-300 text-sage-600 rounded-2xl flex items-center justify-center mx-auto">
+                      <CheckCircle2 className="w-7 h-7" />
+                    </div>
+                    <div>
+                      <h3 className="text-base font-display font-bold text-ink-900">Permintaan Dihantar!</h3>
+                      <p className="text-xs text-ink-500 mt-1 max-w-xs mx-auto">
+                        Aplikasi emel anda patut terbuka dengan mesej sedia ditulis. Jika tidak terbuka, hubungi admin terus dan berikan Nama &amp; ID Username anda.
+                      </p>
+                    </div>
+                  </div>
+                ) : (
+                  <>
+                    <div className="text-center space-y-1.5">
+                      <div className="w-12 h-12 rounded-2xl bg-honey-100 border border-honey-200 flex items-center justify-center mx-auto text-honey-500">
+                        <HelpCircle className="w-6 h-6" />
+                      </div>
+                      <h3 className="text-sm font-display font-bold text-ink-900">Lupa Kata Laluan?</h3>
+                      <p className="text-xs text-ink-500 max-w-xs mx-auto">
+                        Masukkan nama dan ID Username anda — kami akan hantar terus kepada admin untuk bantu reset.
+                      </p>
+                    </div>
+
+                    <form onSubmit={handleForgotSubmit} className="space-y-4">
+                      <div>
+                        <label className="block text-xs font-bold text-ink-700 mb-1.5">Nama Penuh</label>
+                        <div className="relative">
+                          <User className="w-4 h-4 text-ink-300 absolute left-3.5 top-3.5" />
+                          <input
+                            type="text"
+                            value={forgotName}
+                            onChange={(e) => setForgotName(e.target.value)}
+                            placeholder="Contoh: Ahmad Zaki"
+                            className="w-full bg-cream-50 border border-sand-300 focus:border-honey-400 text-ink-900 text-sm rounded-xl pl-10 pr-4 py-3 outline-none transition-colors"
+                            required
+                          />
+                        </div>
+                      </div>
+
+                      <div>
+                        <label className="block text-xs font-bold text-ink-700 mb-1.5">ID Username / Login ID</label>
+                        <div className="relative">
+                          <Key className="w-4 h-4 text-ink-300 absolute left-3.5 top-3.5" />
+                          <input
+                            type="text"
+                            value={forgotLoginId}
+                            onChange={(e) => setForgotLoginId(e.target.value.toUpperCase())}
+                            placeholder="Contoh: AHMAD123"
+                            className="w-full bg-cream-50 border border-sand-300 focus:border-honey-400 text-ink-900 text-sm font-mono uppercase rounded-xl pl-10 pr-4 py-3 outline-none transition-colors"
+                            required
+                          />
+                        </div>
+                      </div>
+
+                      <button
+                        type="submit"
+                        className="w-full py-3.5 px-4 bg-honey-400 hover:bg-honey-500 text-white font-bold rounded-xl shadow-sm transition-colors text-sm flex items-center justify-center gap-2"
+                      >
+                        <Send className="w-4 h-4" />
+                        <span>Hantar Kepada Admin</span>
+                      </button>
+                    </form>
+                  </>
+                )}
+              </div>
             )}
 
             <div className="mt-6 pt-4 border-t border-sand-200 text-center">
