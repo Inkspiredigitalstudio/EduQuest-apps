@@ -154,6 +154,9 @@ export interface BattleRoom {
   status: 'waiting' | 'active' | 'completed';
   host_score: number;
   guest_score: number;
+  host_finished?: boolean;
+  guest_finished?: boolean;
+  question_ids?: string[];
   winner_id?: string;
   created_at: string;
 }
