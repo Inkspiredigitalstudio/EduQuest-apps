@@ -1953,6 +1953,23 @@ CREATE TABLE IF NOT EXISTS public.attempts (
   completed_at TIMESTAMPTZ DEFAULT NOW()
 );
 
+-- 8b. Battle Rooms Table (real cross-device 1v1 sync)
+CREATE TABLE IF NOT EXISTS public.battle_rooms (
+  id TEXT PRIMARY KEY,
+  code TEXT UNIQUE NOT NULL,
+  host_id TEXT NOT NULL,
+  host_name TEXT NOT NULL,
+  guest_id TEXT,
+  guest_name TEXT,
+  status TEXT DEFAULT 'waiting',
+  question_ids TEXT[] DEFAULT '{}',
+  host_score INTEGER DEFAULT 0,
+  guest_score INTEGER DEFAULT 0,
+  host_finished BOOLEAN DEFAULT false,
+  guest_finished BOOLEAN DEFAULT false,
+  created_at TIMESTAMPTZ DEFAULT NOW()
+);
+
 -- 9. Trigger for Auto Creating Profile on Auth Sign-Up
 CREATE OR REPLACE FUNCTION public.handle_new_user()
 RETURNS TRIGGER AS $$
@@ -1985,6 +2002,7 @@ ALTER TABLE public.questions ENABLE ROW LEVEL SECURITY;
 ALTER TABLE public.choices ENABLE ROW LEVEL SECURITY;
 ALTER TABLE public.progress ENABLE ROW LEVEL SECURITY;
 ALTER TABLE public.attempts ENABLE ROW LEVEL SECURITY;
+ALTER TABLE public.battle_rooms ENABLE ROW LEVEL SECURITY;
 
 -- RLS Policies
 -- Users: Read/Update own profile, or read all for leaderboard
@@ -2001,4 +2019,12 @@ CREATE POLICY "Allow public read choices" ON public.choices FOR SELECT USING (tr
 -- Progress & Attempts: Users manage their own
 CREATE POLICY "Users can manage own progress" ON public.progress FOR ALL USING (auth.uid() = user_id);
 CREATE POLICY "Users can manage own attempts" ON public.attempts FOR ALL USING (auth.uid() = user_id);
+
+-- Battle rooms are public read/write by design: they're short-lived, low-stakes,
+-- and this app's accounts aren't reliably backed by real Supabase Auth sessions
+-- (see the local-first hybrid model used throughout), so auth.uid() gating isn't
+-- usable here the way it is for progress/attempts above.
+CREATE POLICY "Public can read battle rooms" ON public.battle_rooms FOR SELECT USING (true);
+CREATE POLICY "Public can create battle rooms" ON public.battle_rooms FOR INSERT WITH CHECK (true);
+CREATE POLICY "Public can update battle rooms" ON public.battle_rooms FOR UPDATE USING (true);
 `;
