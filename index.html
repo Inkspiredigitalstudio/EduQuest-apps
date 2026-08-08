@@ -1,0 +1,49 @@
+<!doctype html>
+<html lang="ms">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no" />
+    <title>EduQuest - Modul SPPIM (Penilaian Pendidikan Islam)</title>
+    
+    <!-- PWA Primary Meta Tags -->
+    <meta name="theme-color" content="#5D8CBB" />
+    <meta name="description" content="EduQuest — Platform Latih Tubi & Gamifikasi Peperiksaan SPPI dan SMKA. Modul aktif: SPPIM (Akidah, Fekah & Akhlak Islamiah)" />
+    <link rel="manifest" href="/manifest.json" />
+    <link rel="icon" type="image/svg+xml" href="/icon.svg" />
+    <link rel="apple-touch-icon" href="/icon.svg" />
+
+    <!-- iOS PWA Meta Tags -->
+    <meta name="apple-mobile-web-app-capable" content="yes" />
+    <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
+    <meta name="apple-mobile-web-app-title" content="EduQuest" />
+
+    <!-- Apply saved theme before paint, to avoid a light/dark flash on load -->
+    <script>
+      (function () {
+        try {
+          var saved = localStorage.getItem('eduquest_theme');
+          var prefersDark = window.matchMedia && window.matchMedia('(prefers-color-scheme: dark)').matches;
+          if (saved === 'dark' || (!saved && prefersDark)) {
+            document.documentElement.classList.add('dark');
+          }
+        } catch (e) {}
+      })();
+    </script>
+  </head>
+  <body class="bg-cream-100 text-ink-900 antialiased selection:bg-mist-300 selection:text-ink-900">
+    <div id="root"></div>
+    <script type="module" src="/src/main.tsx"></script>
+
+    <!-- Register PWA Service Worker -->
+    <script>
+      if ('serviceWorker' in navigator) {
+        window.addEventListener('load', () => {
+          navigator.serviceWorker.register('/sw.js')
+            .then((reg) => console.log('[PWA] Service Worker registered:', reg.scope))
+            .catch((err) => console.warn('[PWA] Service Worker registration failed:', err));
+        });
+      }
+    </script>
+  </body>
+</html>
+
