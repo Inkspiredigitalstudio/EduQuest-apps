@@ -1,8 +1,8 @@
 import React, { useState, useEffect } from 'react';
 import { UserProfile, Question, BattleRoom, Subject, Paper, Section } from '../../types';
-import { createBattleRoom, joinBattleRoom } from '../../lib/supabase';
+import { createBattleRoom, joinBattleRoom, getBattleRoomState, updateBattleScore, finishBattleRoom } from '../../lib/supabase';
 import { soundManager } from '../../lib/audio';
-import { Swords, Play, Trophy, CheckCircle2, XCircle, Sparkles, X, Copy, Clock, AlertCircle, BookOpen } from 'lucide-react';
+import { Swords, Play, Trophy, CheckCircle2, XCircle, Sparkles, X, Copy, Clock, AlertCircle, BookOpen, Loader2, Users } from 'lucide-react';
 
 interface BattleLobbyModalProps {
   isOpen: boolean;
@@ -24,6 +24,7 @@ const TOPICS = [
 ];
 
 const QUESTION_TIME_LIMIT = 15;
+const POLL_INTERVAL_MS = 2500;
 
 export const BattleLobbyModal: React.FC<BattleLobbyModalProps> = ({
   isOpen,
@@ -35,11 +36,12 @@ export const BattleLobbyModal: React.FC<BattleLobbyModalProps> = ({
   onClose,
   onFinishBattle,
 }) => {
-  const [mode, setMode] = useState<'lobby' | 'playing' | 'result'>('lobby');
+  const [mode, setMode] = useState<'lobby' | 'playing' | 'waiting_opponent' | 'result'>('lobby');
   const [activeRoom, setActiveRoom] = useState<BattleRoom | null>(null);
   const [joinCodeInput, setJoinCodeInput] = useState('');
   const [copiedCode, setCopiedCode] = useState(false);
   const [errorMsg, setErrorMsg] = useState('');
+  const [creatingOrJoining, setCreatingOrJoining] = useState(false);
 
   const [selectedTopic, setSelectedTopic] = useState<string>('all');
 
@@ -47,11 +49,15 @@ export const BattleLobbyModal: React.FC<BattleLobbyModalProps> = ({
   const [currentQIndex, setCurrentQIndex] = useState(0);
   const [myScore, setMyScore] = useState(0);
   const [opponentScore, setOpponentScore] = useState(0);
-  const [opponentName, setOpponentName] = useState('Lawan Maya (AI)');
   const [selectedChoiceId, setSelectedChoiceId] = useState<string | null>(null);
   const [isTimeout, setIsTimeout] = useState(false);
 
   const [timeLeft, setTimeLeft] = useState<number>(QUESTION_TIME_LIMIT);
+
+  const isHost = activeRoom ? activeRoom.host_id === user.id : true;
+  const opponentName = activeRoom
+    ? (isHost ? activeRoom.guest_name : activeRoom.host_name) || 'Menunggu rakan...'
+    : 'Rakan';
 
   useEffect(() => {
     if (!isOpen) {
@@ -60,6 +66,7 @@ export const BattleLobbyModal: React.FC<BattleLobbyModalProps> = ({
       setJoinCodeInput('');
       setCopiedCode(false);
       setErrorMsg('');
+      setCreatingOrJoining(false);
       setBattleQuestions([]);
       setCurrentQIndex(0);
       setMyScore(0);
@@ -71,6 +78,7 @@ export const BattleLobbyModal: React.FC<BattleLobbyModalProps> = ({
     }
   }, [isOpen]);
 
+  // Countdown timer for the current question
   useEffect(() => {
     if (mode !== 'playing' || selectedChoiceId !== null || isTimeout) return;
 
@@ -86,6 +94,30 @@ export const BattleLobbyModal: React.FC<BattleLobbyModalProps> = ({
     return () => clearInterval(timer);
   }, [mode, timeLeft, selectedChoiceId, isTimeout]);
 
+  // Live poll for opponent — covers: waiting for guest to join the lobby,
+  // opponent's live score while both are playing, and opponent finishing
+  // while this player is waiting for them.
+  useEffect(() => {
+    if (!activeRoom) return;
+    if (mode !== 'lobby' && mode !== 'playing' && mode !== 'waiting_opponent') return;
+
+    const interval = setInterval(async () => {
+      const fresh = await getBattleRoomState(activeRoom.id);
+      if (!fresh) return;
+
+      setActiveRoom(fresh);
+      setOpponentScore(isHost ? fresh.guest_score : fresh.host_score);
+
+      const opponentFinished = isHost ? fresh.guest_finished : fresh.host_finished;
+      if (mode === 'waiting_opponent' && opponentFinished) {
+        soundManager.playLevelUp();
+        setMode('result');
+      }
+    }, POLL_INTERVAL_MS);
+
+    return () => clearInterval(interval);
+  }, [activeRoom?.id, mode, isHost]);
+
   if (!isOpen) return null;
 
   const handleTimeout = () => {
@@ -93,31 +125,41 @@ export const BattleLobbyModal: React.FC<BattleLobbyModalProps> = ({
     setIsTimeout(true);
     setSelectedChoiceId('TIMEOUT_CHOICE');
 
-    const oppCorrect = Math.random() > 0.4;
-    if (oppCorrect) setOpponentScore((prev) => prev + 1);
-
     setTimeout(() => {
       moveToNextQuestion();
     }, 1500);
   };
 
-  const handleCreateRoom = () => {
+  const handleCreateRoom = async () => {
     soundManager.playClick();
     setErrorMsg('');
-    const room = createBattleRoom(user);
+
+    const filtered = getFilteredQuestions();
+    if (filtered.length === 0) {
+      setErrorMsg('Tiada soalan ditemui untuk tajuk ini. Sila pilih tajuk lain.');
+      return;
+    }
+
+    setCreatingOrJoining(true);
+    const room = await createBattleRoom(user, filtered);
+    setCreatingOrJoining(false);
     setActiveRoom(room);
   };
 
-  const handleJoinRoom = () => {
+  const handleJoinRoom = async () => {
     soundManager.playClick();
     setErrorMsg('');
     if (!joinCodeInput.trim()) {
       setErrorMsg('Sila masukkan Kod Bilik Battle.');
       return;
     }
-    const room = joinBattleRoom(joinCodeInput.trim(), user);
+
+    setCreatingOrJoining(true);
+    const room = await joinBattleRoom(joinCodeInput.trim(), user);
+    setCreatingOrJoining(false);
+
     if (!room) {
-      setErrorMsg('Bilik tidak dijumpai atau telah penuh.');
+      setErrorMsg('Bilik tidak dijumpai atau telah penuh. Semak semula kod tersebut.');
       return;
     }
     setActiveRoom(room);
@@ -142,21 +184,26 @@ export const BattleLobbyModal: React.FC<BattleLobbyModalProps> = ({
   };
 
   const handleStartBattle = () => {
+    if (!activeRoom) return;
     soundManager.playLevelUp();
 
-    const filtered = getFilteredQuestions();
-    const shuffled = [...filtered].sort(() => 0.5 - Math.random()).slice(0, 10);
+    // Both players must answer the exact same questions — pulled from the
+    // shared room record (set once, by whoever created the room) rather than
+    // re-randomized locally per player.
+    const sharedIds = activeRoom.question_ids || [];
+    const matched = sharedIds
+      .map((id) => questions.find((q) => q.id === id))
+      .filter((q): q is Question => Boolean(q));
 
-    if (shuffled.length === 0) {
-      setErrorMsg('Tiada soalan ditemui untuk tajuk ini. Sila pilih tajuk lain.');
+    if (matched.length === 0) {
+      setErrorMsg('Soalan battle untuk bilik ini tidak dijumpai. Cuba cipta bilik baru.');
       return;
     }
 
-    setBattleQuestions(shuffled);
+    setBattleQuestions(matched);
     setCurrentQIndex(0);
     setMyScore(0);
-    setOpponentScore(0);
-    setOpponentName(activeRoom?.guest_name || 'Lawan Maya (AI)');
+    setOpponentScore(isHost ? activeRoom.guest_score || 0 : activeRoom.host_score || 0);
     setSelectedChoiceId(null);
     setIsTimeout(false);
     setTimeLeft(QUESTION_TIME_LIMIT);
@@ -169,6 +216,19 @@ export const BattleLobbyModal: React.FC<BattleLobbyModalProps> = ({
       setSelectedChoiceId(null);
       setIsTimeout(false);
       setTimeLeft(QUESTION_TIME_LIMIT);
+      return;
+    }
+
+    // Finished all questions
+    if (activeRoom) {
+      finishBattleRoom(activeRoom.id, isHost);
+      const opponentAlreadyFinished = isHost ? activeRoom.guest_finished : activeRoom.host_finished;
+      if (opponentAlreadyFinished) {
+        soundManager.playLevelUp();
+        setMode('result');
+      } else {
+        setMode('waiting_opponent');
+      }
     } else {
       soundManager.playLevelUp();
       setMode('result');
@@ -179,15 +239,19 @@ export const BattleLobbyModal: React.FC<BattleLobbyModalProps> = ({
     if (selectedChoiceId !== null || isTimeout) return;
     setSelectedChoiceId(choiceId);
 
+    let newScore = myScore;
     if (isCorrect) {
       soundManager.playCoin();
-      setMyScore((prev) => prev + 1);
+      newScore = myScore + 1;
+      setMyScore(newScore);
     } else {
       soundManager.playClick();
     }
 
-    const oppCorrect = Math.random() > 0.35;
-    if (oppCorrect) setOpponentScore((prev) => prev + 1);
+    if (activeRoom) {
+      // Fire-and-forget — gameplay shouldn't wait on network round trips
+      updateBattleScore(activeRoom.id, isHost, newScore);
+    }
 
     setTimeout(() => {
       moveToNextQuestion();
@@ -206,8 +270,8 @@ export const BattleLobbyModal: React.FC<BattleLobbyModalProps> = ({
               <Swords className="w-5 h-5" />
             </div>
             <div>
-              <h2 className="text-xl font-display font-bold text-ink-900">Battle 1v1 Interaktif</h2>
-              <p className="text-xs text-ink-500">10 Soalan Pantas • Pilih Tajuk • Cabaran Masa!</p>
+              <h2 className="text-xl font-display font-bold text-ink-900">Battle 1v1 Sebenar</h2>
+              <p className="text-xs text-ink-500">10 Soalan • Lawan Rakan Sebenar • Cabaran Masa!</p>
             </div>
           </div>
 
@@ -219,48 +283,51 @@ export const BattleLobbyModal: React.FC<BattleLobbyModalProps> = ({
         {/* LOBBY MODE */}
         {mode === 'lobby' && (
           <div className="space-y-5 overflow-y-auto pr-1 flex-1">
-            <div className="space-y-2">
-              <label className="text-xs font-bold text-ink-700 uppercase tracking-wide flex items-center gap-1.5">
-                <BookOpen className="w-3.5 h-3.5 text-honey-500" />
-                <span>Pilih Tajuk Soalan Battle (10 Soalan)</span>
-              </label>
+            {!activeRoom && (
+              <div className="space-y-2">
+                <label className="text-xs font-bold text-ink-700 uppercase tracking-wide flex items-center gap-1.5">
+                  <BookOpen className="w-3.5 h-3.5 text-honey-500" />
+                  <span>Pilih Tajuk Soalan Battle (10 Soalan)</span>
+                </label>
 
-              <div className="grid grid-cols-2 sm:grid-cols-3 gap-2">
-                {TOPICS.map((topic) => {
-                  const isSelected = selectedTopic === topic.id;
-                  return (
-                    <button
-                      key={topic.id}
-                      type="button"
-                      onClick={() => {
-                        soundManager.playClick();
-                        setSelectedTopic(topic.id);
-                        setErrorMsg('');
-                      }}
-                      className={`p-2.5 rounded-xl border text-xs font-bold transition-colors flex items-center gap-2 ${
-                        isSelected ? 'bg-honey-100 border-honey-400 text-honey-500' : 'bg-cream-100 border-sand-200 text-ink-500 hover:border-sand-300'
-                      }`}
-                    >
-                      <span className="text-base">{topic.icon}</span>
-                      <span className="truncate">{topic.name}</span>
-                    </button>
-                  );
-                })}
+                <div className="grid grid-cols-2 sm:grid-cols-3 gap-2">
+                  {TOPICS.map((topic) => {
+                    const isSelected = selectedTopic === topic.id;
+                    return (
+                      <button
+                        key={topic.id}
+                        type="button"
+                        onClick={() => {
+                          soundManager.playClick();
+                          setSelectedTopic(topic.id);
+                          setErrorMsg('');
+                        }}
+                        className={`p-2.5 rounded-xl border text-xs font-bold transition-colors flex items-center gap-2 ${
+                          isSelected ? 'bg-honey-100 border-honey-400 text-honey-500' : 'bg-cream-100 border-sand-200 text-ink-500 hover:border-sand-300'
+                        }`}
+                      >
+                        <span className="text-base">{topic.icon}</span>
+                        <span className="truncate">{topic.name}</span>
+                      </button>
+                    );
+                  })}
+                </div>
               </div>
-            </div>
+            )}
 
             {!activeRoom ? (
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 pt-2">
                 <div className="bg-cream-100 border border-sand-200 p-5 rounded-2xl text-center space-y-3 flex flex-col justify-between">
                   <div>
                     <h3 className="text-sm font-bold text-ink-900">Bina Bilik Battle Baru</h3>
-                    <p className="text-xs text-ink-500 mt-1">Dapatkan Kod Bilik 6-Aksara &amp; jemput rakan berlawan.</p>
+                    <p className="text-xs text-ink-500 mt-1">Dapatkan Kod Bilik &amp; jemput rakan berlawan.</p>
                   </div>
                   <button
                     onClick={handleCreateRoom}
-                    className="w-full py-3 px-4 bg-clay-500 hover:bg-clay-500/90 text-white font-bold rounded-xl text-xs transition-colors flex items-center justify-center gap-2"
+                    disabled={creatingOrJoining}
+                    className="w-full py-3 px-4 bg-clay-500 hover:bg-clay-500/90 disabled:opacity-60 text-white font-bold rounded-xl text-xs transition-colors flex items-center justify-center gap-2"
                   >
-                    <Swords className="w-4 h-4" />
+                    {creatingOrJoining ? <Loader2 className="w-4 h-4 animate-spin" /> : <Swords className="w-4 h-4" />}
                     <span>Cipta Bilik Battle</span>
                   </button>
                 </div>
@@ -278,8 +345,12 @@ export const BattleLobbyModal: React.FC<BattleLobbyModalProps> = ({
                       placeholder="Kod Bilik (cth: BTL-1234)"
                       className="w-full bg-cream-50 border border-sand-300 rounded-xl px-3 py-2 text-xs font-mono font-bold text-honey-500 text-center uppercase outline-none focus:border-honey-400"
                     />
-                    <button onClick={handleJoinRoom} className="w-full py-2.5 px-4 bg-cream-200 hover:bg-sand-300 text-ink-900 font-bold rounded-xl text-xs transition-colors">
-                      Sertai Bilik
+                    <button
+                      onClick={handleJoinRoom}
+                      disabled={creatingOrJoining}
+                      className="w-full py-2.5 px-4 bg-cream-200 hover:bg-sand-300 disabled:opacity-60 text-ink-900 font-bold rounded-xl text-xs transition-colors"
+                    >
+                      {creatingOrJoining ? 'Menyambung...' : 'Sertai Bilik'}
                     </button>
                   </div>
                 </div>
@@ -303,17 +374,21 @@ export const BattleLobbyModal: React.FC<BattleLobbyModalProps> = ({
                 </button>
 
                 <div className="p-3 bg-cream-50 rounded-xl border border-sand-200 text-xs text-ink-700 flex items-center justify-around">
-                  <span className="font-bold text-mist-600">Pemain 1: {user.name}</span>
+                  <span className="font-bold text-mist-600">Pemain 1: {activeRoom.host_name}</span>
                   <span className="text-ink-300">VS</span>
-                  <span className="font-bold text-clay-500">Pemain 2: {activeRoom.guest_name || 'Menunggu / Lawan AI...'}</span>
+                  <span className="font-bold text-clay-500 flex items-center gap-1.5">
+                    {!activeRoom.guest_name && <Loader2 className="w-3 h-3 animate-spin" />}
+                    Pemain 2: {activeRoom.guest_name || 'Menunggu rakan sertai...'}
+                  </span>
                 </div>
 
                 <button
                   onClick={handleStartBattle}
-                  className="w-full py-3.5 bg-sage-500 hover:bg-sage-600 text-white font-bold rounded-2xl text-sm transition-colors flex items-center justify-center gap-2"
+                  disabled={!activeRoom.guest_name}
+                  className="w-full py-3.5 bg-sage-500 hover:bg-sage-600 disabled:opacity-50 disabled:cursor-not-allowed text-white font-bold rounded-2xl text-sm transition-colors flex items-center justify-center gap-2"
                 >
                   <Play className="w-5 h-5 fill-white" />
-                  <span>Mula Cabaran Battle 10 Soalan!</span>
+                  <span>{activeRoom.guest_name ? 'Mula Cabaran Battle 10 Soalan!' : 'Menunggu Rakan Sertai...'}</span>
                 </button>
               </div>
             )}
@@ -398,6 +473,32 @@ export const BattleLobbyModal: React.FC<BattleLobbyModalProps> = ({
                 );
               })}
             </div>
+          </div>
+        )}
+
+        {/* WAITING FOR OPPONENT TO FINISH */}
+        {mode === 'waiting_opponent' && (
+          <div className="text-center space-y-5 my-auto">
+            <div className="w-16 h-16 rounded-3xl bg-mist-100 flex items-center justify-center mx-auto text-mist-600">
+              <Users className="w-8 h-8 animate-pulse" />
+            </div>
+            <div>
+              <h3 className="text-lg font-display font-bold text-ink-900">Menunggu {opponentName} Selesai...</h3>
+              <p className="text-xs text-ink-500 mt-1">Markah anda: <span className="font-bold text-mist-600">{myScore}</span> / {battleQuestions.length}</p>
+            </div>
+            <div className="flex items-center justify-center gap-2 text-xs text-ink-500">
+              <Loader2 className="w-4 h-4 animate-spin" />
+              <span>Keputusan akan dipaparkan automatik sebaik sahaja rakan selesai</span>
+            </div>
+            <button
+              onClick={() => {
+                soundManager.playClick();
+                setMode('result');
+              }}
+              className="text-xs font-semibold text-ink-500 hover:text-ink-700 underline"
+            >
+              Lihat keputusan sekarang (tanpa tunggu)
+            </button>
           </div>
         )}
 
