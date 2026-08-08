@@ -6,7 +6,7 @@ import { User, Lock, Phone, Sparkles, Key, CheckCircle2, Copy, AlertCircle, Arro
 
 // Admin support inbox for "Forgot Password" requests. Change this to the real
 // admin email address before going live.
-const ADMIN_SUPPORT_EMAIL = 'admin@eduquest.example';
+const ADMIN_SUPPORT_EMAIL = 'inkspire.digitalstudio@gmail.com';
 
 interface AuthModalProps {
   isOpen: boolean;
