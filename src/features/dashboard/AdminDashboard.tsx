@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { UserProfile, Subject, Paper, Section, Question, Choice } from '../../types';
-import { isSupabaseConfigured, getAllRegisteredUsers, resetUserPassword } from '../../lib/supabase';
+import { isSupabaseConfigured, getAllRegisteredUsers, resetUserPassword, testSupabaseConnection, supabaseDiagnostic } from '../../lib/supabase';
 import { SUPABASE_SQL_SETUP_DDL } from '../../data/seedData';
 import { soundManager } from '../../lib/audio';
 import {
@@ -91,6 +91,18 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
 
   // ---- Setup / DDL tab state ----
   const [copiedSql, setCopiedSql] = useState(false);
+  const [testingConnection, setTestingConnection] = useState(false);
+  const [connectionTestResult, setConnectionTestResult] = useState<{ ok: boolean; message: string } | null>(null);
+
+  const handleTestConnection = async () => {
+    soundManager.playClick();
+    setTestingConnection(true);
+    setConnectionTestResult(null);
+    const result = await testSupabaseConnection();
+    setConnectionTestResult(result);
+    setTestingConnection(false);
+    soundManager.playCoin();
+  };
 
   const inputCls = 'w-full bg-cream-50 border border-sand-300 focus:border-mist-400 text-ink-900 text-xs rounded-xl p-3 outline-none transition-colors';
 
@@ -633,16 +645,38 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
               <div className="space-y-4">
                 <div className={`p-4 rounded-2xl border flex items-center gap-3 ${isSupabaseConfigured ? 'bg-sage-100 border-sage-200 text-sage-600' : 'bg-honey-100 border-honey-200 text-honey-500'}`}>
                   <Database className="w-6 h-6 shrink-0" />
-                  <div>
+                  <div className="flex-1 min-w-0">
                     <h4 className="text-sm font-bold">
-                      {isSupabaseConfigured ? 'Sambungan Supabase Aktif & Terhubung!' : 'Mod Hibrid Aktif (Supabase Tempatan / Local Fallback)'}
+                      {isSupabaseConfigured ? 'Env Var Dikesan & Format Sah' : 'Mod Hibrid Aktif (Local Fallback)'}
                     </h4>
                     <p className="text-xs opacity-90 mt-0.5">
                       {isSupabaseConfigured
-                        ? 'Aplikasi sedang menyelaraskan akaun & jawapan terus ke pengkalan data Postgres Supabase.'
-                        : 'Untuk menyambung ke Supabase fizikal, masukkan VITE_SUPABASE_URL & VITE_SUPABASE_ANON_KEY dalam pembolehubah persekitaran.'}
+                        ? 'Format URL & kunci nampak betul — tapi ini belum confirm sambungan sebenar. Klik "Test Sambungan" di bawah.'
+                        : supabaseDiagnostic || 'VITE_SUPABASE_URL / VITE_SUPABASE_ANON_KEY tidak dikesan.'}
                     </p>
                   </div>
+                </div>
+
+                <div className="bg-cream-50 border border-sand-200 rounded-2xl p-4 space-y-3">
+                  <div className="flex items-center justify-between">
+                    <h4 className="text-sm font-bold text-ink-900">Test Sambungan Sebenar</h4>
+                    <button
+                      onClick={handleTestConnection}
+                      disabled={testingConnection}
+                      className="px-3 py-1.5 bg-mist-500 hover:bg-mist-600 disabled:opacity-60 text-white font-bold text-xs rounded-xl flex items-center gap-1.5 transition-colors"
+                    >
+                      {testingConnection ? <RefreshCw className="w-3.5 h-3.5 animate-spin" /> : <Database className="w-3.5 h-3.5" />}
+                      <span>{testingConnection ? 'Menguji...' : 'Test Sambungan'}</span>
+                    </button>
+                  </div>
+                  {connectionTestResult && (
+                    <div className={`p-3 rounded-xl text-xs font-semibold ${connectionTestResult.ok ? 'bg-sage-100 text-sage-600' : 'bg-clay-100 text-clay-500'}`}>
+                      {connectionTestResult.message}
+                    </div>
+                  )}
+                  <p className="text-[11px] text-ink-500">
+                    Ini menguji sambungan betul-betul (buat query sebenar ke Supabase), bukan setakat semak format env var.
+                  </p>
                 </div>
 
                 <div className="bg-cream-50 border border-sand-200 rounded-3xl p-5 space-y-3">
