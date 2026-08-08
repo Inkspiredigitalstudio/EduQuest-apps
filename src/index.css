@@ -1,53 +1,67 @@
 @import "tailwindcss";
 @import url('https://fonts.googleapis.com/css2?family=Baloo+2:wght@500;600;700;800&family=Inter:wght@400;500;600;700;800&display=swap');
 
+/* Class-based dark mode (toggle-controlled, not just OS preference).
+   Adding/removing .dark on <html> flips every --color-* variable below,
+   so components never need dark: prefixes — a plain bg-cream-50 already
+   resolves to the correct value in both themes. */
 @custom-variant dark (&:where(.dark, .dark *));
 
 @theme {
   --font-display: "Baloo 2", "Inter", system-ui, sans-serif;
   --font-sans: "Inter", system-ui, sans-serif;
 
+  /* Off-white / cream canvas */
   --color-cream-50: #FEFDFB;
   --color-cream-100: #FAF7F1;
   --color-cream-200: #F2EDE3;
 
+  /* Neutral sand (borders / dividers) */
   --color-sand-200: #EAE3D6;
   --color-sand-300: #DDD4C2;
   --color-sand-400: #C7BBA3;
 
+  /* Warm charcoal ink (text) */
   --color-ink-900: #3A362F;
   --color-ink-700: #57524A;
   --color-ink-500: #837D70;
   --color-ink-300: #AFA89A;
 
-  --color-mist-100: #E6EEF5;
-  --color-mist-200: #CBDDEC;
-  --color-mist-300: #A9C7E0;
-  --color-mist-400: #82AAD0;
-  --color-mist-500: #5D8CBB;
-  --color-mist-600: #4A729C;
-  --color-mist-700: #3B5C7D;
+  /* Soft blue — primary accent */
+  --color-mist-100: #DCEAF7;
+  --color-mist-200: #B8D4EC;
+  --color-mist-300: #8FB9DE;
+  --color-mist-400: #5D97C9;
+  --color-mist-500: #3D74A8;
+  --color-mist-600: #305D89;
+  --color-mist-700: #26496D;
 
-  --color-sage-100: #E9EFE4;
-  --color-sage-200: #D2E0C8;
-  --color-sage-300: #B4CCA3;
-  --color-sage-400: #93B67C;
-  --color-sage-500: #799C61;
-  --color-sage-600: #61804B;
+  /* Sage green — secondary accent (Parent / calm) */
+  --color-sage-100: #DCEACE;
+  --color-sage-200: #BBDAA0;
+  --color-sage-300: #97C374;
+  --color-sage-400: #74A852;
+  --color-sage-500: #588A3B;
+  --color-sage-600: #47702F;
 
-  --color-honey-100: #F7EEDB;
-  --color-honey-200: #EEDCB3;
-  --color-honey-300: #E2C384;
-  --color-honey-400: #D4A857;
-  --color-honey-500: #BD8C3E;
+  /* Soft honey gold — rewards / xp / highlights */
+  --color-honey-100: #FBEAC3;
+  --color-honey-200: #F5D68C;
+  --color-honey-300: #EDBE56;
+  --color-honey-400: #DDA22E;
+  --color-honey-500: #B87F1E;
 
-  --color-clay-100: #F5E7E2;
-  --color-clay-200: #E9CAC0;
-  --color-clay-300: #DAA897;
-  --color-clay-400: #C6836C;
-  --color-clay-500: #AC6650;
+  /* Soft clay — gentle warnings / weak areas (never alarming) */
+  --color-clay-100: #F6DCCF;
+  --color-clay-200: #EBB89E;
+  --color-clay-300: #DD9271;
+  --color-clay-400: #C96F4B;
+  --color-clay-500: #A8532F;
 }
 
+/* Dark mode overrides — same token names, inverted lightness.
+   Same soft/low-saturation character is kept intentionally: dark mode
+   should feel calm and ADHD-friendly too, not high-contrast/harsh. */
 .dark {
   --color-cream-50: #262420;
   --color-cream-100: #1B1917;
@@ -65,29 +79,29 @@
   --color-mist-100: #1B2733;
   --color-mist-200: #23364A;
   --color-mist-300: #35506B;
-  --color-mist-400: #6FA0CE;
-  --color-mist-500: #6FA0CE;
-  --color-mist-600: #8AB4DC;
-  --color-mist-700: #A9C7E0;
+  --color-mist-400: #5D97C9;
+  --color-mist-500: #5D97C9;
+  --color-mist-600: #7FADD6;
+  --color-mist-700: #A0C3E3;
 
   --color-sage-100: #1E2A19;
   --color-sage-200: #28351F;
   --color-sage-300: #3D4E2E;
-  --color-sage-400: #8AB06C;
-  --color-sage-500: #8AB06C;
-  --color-sage-600: #A9CC8F;
+  --color-sage-400: #74A852;
+  --color-sage-500: #74A852;
+  --color-sage-600: #92C077;
 
   --color-honey-100: #332A18;
   --color-honey-200: #40331C;
   --color-honey-300: #6B5227;
-  --color-honey-400: #D4A857;
-  --color-honey-500: #E2C384;
+  --color-honey-400: #DDA22E;
+  --color-honey-500: #EDBE56;
 
   --color-clay-100: #2E211D;
   --color-clay-200: #3A2721;
   --color-clay-300: #5C3A30;
-  --color-clay-400: #C6836C;
-  --color-clay-500: #D9A28C;
+  --color-clay-400: #C96F4B;
+  --color-clay-500: #DD9271;
 }
 
 html {
@@ -130,6 +144,7 @@ h1, h2, h3, .font-display {
   scrollbar-width: none;
 }
 
+/* Respect motion preferences — important for ADHD-friendly, low-distraction UI */
 @media (prefers-reduced-motion: reduce) {
   *, *::before, *::after {
     animation-duration: 0.01ms !important;
@@ -139,6 +154,7 @@ h1, h2, h3, .font-display {
   }
 }
 
+/* Visible keyboard focus ring, calm and consistent */
 :focus-visible {
   outline: 2px solid var(--color-mist-500);
   outline-offset: 2px;
