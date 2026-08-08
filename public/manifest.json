@@ -1,19 +1,7 @@
 {
   "short_name": "EduQuest",
-  "name": "EduQuest - Penilaian Pendidikan Islam",
+  "name": "EduQuest - Modul SPPIM (Penilaian Pendidikan Islam)",
   "icons": [
-    {
-      "src": "/pwa-192x192.png",
-      "type": "image/png",
-      "sizes": "192x192",
-      "purpose": "any maskable"
-    },
-    {
-      "src": "/pwa-512x512.png",
-      "type": "image/png",
-      "sizes": "512x512",
-      "purpose": "any maskable"
-    },
     {
       "src": "/icon.svg",
       "type": "image/svg+xml",
@@ -22,9 +10,9 @@
     }
   ],
   "start_url": "/",
-  "background_color": "#0f172a",
-  "theme_color": "#0284c7",
+  "background_color": "#FAF7F1",
+  "theme_color": "#5D8CBB",
   "display": "standalone",
   "orientation": "portrait",
-  "description": "Platform Latih Tubi & Gamifikasi SPPI/SMKA - Akidah 2024, Fekah & Akhlak Islamiah"
+  "description": "EduQuest — Platform Latih Tubi & Gamifikasi Peperiksaan SPPI dan SMKA. Modul aktif: SPPIM (Akidah, Fekah & Akhlak Islamiah)"
 }
