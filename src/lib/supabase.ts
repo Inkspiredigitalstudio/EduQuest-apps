@@ -2,27 +2,69 @@ import { createClient, SupabaseClient } from '@supabase/supabase-js';
 import { UserProfile, UserProgress, UserAttempt, Subject, Paper, Section, Question, Choice, StudentLink, FriendRequest, BattleRoom, Achievement } from '../types';
 import { INITIAL_SUBJECTS, INITIAL_PAPERS, INITIAL_SECTIONS, INITIAL_QUESTIONS } from '../data/seedData';
 
-const supabaseUrl = import.meta.env.VITE_SUPABASE_URL || '';
-const supabaseAnonKey = import.meta.env.VITE_SUPABASE_ANON_KEY || '';
+const supabaseUrl = (import.meta.env.VITE_SUPABASE_URL || '').trim();
+const supabaseAnonKey = (import.meta.env.VITE_SUPABASE_ANON_KEY || '').trim();
 
-export const isSupabaseConfigured = Boolean(
-  supabaseUrl && 
-  supabaseAnonKey && 
-  (() => {
-    try {
-      const parsed = new URL(supabaseUrl);
-      return parsed.protocol === 'https:' && 
-        !supabaseUrl.includes('placeholder') && 
-        !supabaseUrl.includes('YOUR_SUPABASE');
-    } catch {
+// Human-readable reason the connection isn't live — shown in Admin Dashboard
+// so this can be diagnosed without opening browser DevTools.
+export let supabaseDiagnostic = '';
+
+export const isSupabaseConfigured = (() => {
+  if (!supabaseUrl) { supabaseDiagnostic = 'VITE_SUPABASE_URL kosong/tidak dikesan.'; return false; }
+  if (!supabaseAnonKey) { supabaseDiagnostic = 'VITE_SUPABASE_ANON_KEY kosong/tidak dikesan.'; return false; }
+  if ((supabaseUrl.startsWith('"') && supabaseUrl.endsWith('"')) || (supabaseUrl.startsWith("'") && supabaseUrl.endsWith("'"))) {
+    supabaseDiagnostic = 'VITE_SUPABASE_URL ada tanda petik (") terselit — buang tanda petik tu dalam Vercel env var.';
+    return false;
+  }
+  try {
+    const parsed = new URL(supabaseUrl);
+    if (parsed.protocol !== 'https:') {
+      supabaseDiagnostic = 'VITE_SUPABASE_URL bukan https:// — semak semula format URL.';
       return false;
     }
-  })()
-);
+    if (supabaseUrl.includes('placeholder') || supabaseUrl.includes('YOUR_SUPABASE')) {
+      supabaseDiagnostic = 'VITE_SUPABASE_URL masih guna nilai placeholder, bukan URL projek sebenar.';
+      return false;
+    }
+    if (!supabaseAnonKey.startsWith('eyJ')) {
+      supabaseDiagnostic = 'VITE_SUPABASE_ANON_KEY tidak nampak seperti kunci JWT sah (patut bermula dengan "eyJ").';
+      return false;
+    }
+    return true;
+  } catch {
+    supabaseDiagnostic = `VITE_SUPABASE_URL bukan URL yang sah: "${supabaseUrl.slice(0, 40)}..."`;
+    return false;
+  }
+})();
 
-export const supabase: SupabaseClient | null = isSupabaseConfigured
-  ? createClient(supabaseUrl, supabaseAnonKey)
-  : null;
+export const supabase: SupabaseClient | null = (() => {
+  if (!isSupabaseConfigured) return null;
+  try {
+    return createClient(supabaseUrl, supabaseAnonKey);
+  } catch (e) {
+    supabaseDiagnostic = `createClient() gagal: ${e instanceof Error ? e.message : String(e)}`;
+    console.warn('Supabase client failed to initialize, falling back to local mode:', e);
+    return null;
+  }
+})();
+
+// Live test — confirms the connection actually works (not just correctly
+// formatted). Call this from the Admin Dashboard to self-diagnose without
+// needing browser DevTools.
+export async function testSupabaseConnection(): Promise<{ ok: boolean; message: string }> {
+  if (!isSupabaseConfigured || !supabase) {
+    return { ok: false, message: supabaseDiagnostic || 'Supabase tidak dikonfigurasi.' };
+  }
+  try {
+    const { error } = await supabase.from('subjects').select('id').limit(1);
+    if (error) {
+      return { ok: false, message: `Sambungan gagal: ${error.message}` };
+    }
+    return { ok: true, message: 'Sambungan Supabase berjaya disahkan.' };
+  } catch (e) {
+    return { ok: false, message: `Sambungan gagal: ${e instanceof Error ? e.message : String(e)}` };
+  }
+}
 
 // Local fallback storage keys
 const LOCAL_USER_KEY = 'sppim_local_active_user';
