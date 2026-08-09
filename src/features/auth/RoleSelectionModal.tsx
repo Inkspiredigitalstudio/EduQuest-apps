@@ -2,7 +2,7 @@ import React from 'react';
 import { UserProfile } from '../../types';
 import { updateUserRole } from '../../lib/supabase';
 import { soundManager } from '../../lib/audio';
-import { GraduationCap, Heart, Sparkles } from 'lucide-react';
+import { GraduationCap, Heart, Sparkles, Shield } from 'lucide-react';
 
 interface RoleSelectionModalProps {
   isOpen: boolean;
@@ -17,7 +17,7 @@ export const RoleSelectionModal: React.FC<RoleSelectionModalProps> = ({
 }) => {
   if (!isOpen) return null;
 
-  const handleSelectRole = async (role: 'student' | 'parent') => {
+  const handleSelectRole = async (role: 'student' | 'parent' | 'admin') => {
     soundManager.playLevelUp();
     const updated = await updateUserRole(user, role);
     onSuccess(updated);
@@ -71,6 +71,24 @@ export const RoleSelectionModal: React.FC<RoleSelectionModalProps> = ({
               </span>
               <p className="text-xs text-ink-500 mt-0.5 leading-relaxed">
                 Pautkan akaun anak &amp; pantau keputusan, prestasi serta perkembangan.
+              </p>
+            </div>
+          </button>
+
+          {/* Admin Card — TEMPORARY bootstrap option */}
+          <button
+            onClick={() => handleSelectRole('admin')}
+            className="p-5 rounded-3xl bg-cream-50 hover:bg-honey-100/60 border-2 border-sand-200 hover:border-honey-300 text-left transition-colors group flex items-center gap-4"
+          >
+            <div className="w-12 h-12 rounded-2xl bg-honey-100 flex items-center justify-center text-honey-500 shrink-0">
+              <Shield className="w-6 h-6" />
+            </div>
+            <div className="flex-1 min-w-0">
+              <span className="text-sm font-display font-bold text-ink-900 block">
+                Admin (Sementara)
+              </span>
+              <p className="text-xs text-ink-500 mt-0.5 leading-relaxed">
+                Urus bank soalan &amp; peserta. Buang pilihan ni lepas setup selesai.
               </p>
             </div>
           </button>
