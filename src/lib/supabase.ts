@@ -125,7 +125,7 @@ export async function checkLoginIdExists(loginId: string): Promise<boolean> {
 
 export async function updateUserRole(
   user: UserProfile,
-  role: 'student' | 'parent'
+  role: 'student' | 'parent' | 'admin'
 ): Promise<UserProfile> {
   const inviteCode = role === 'student' ? (user.invite_code || generateInviteCode()) : user.invite_code;
   const updatedProfile: UserProfile = {
@@ -156,7 +156,7 @@ export async function updateUserRole(
 export async function registerUser(
   displayName: string,
   password: string,
-  role: 'student' | 'parent' = 'student',
+  role: 'student' | 'parent' | 'admin' = 'student',
   phone?: string,
   customUsername?: string
 ): Promise<{
