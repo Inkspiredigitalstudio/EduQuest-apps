@@ -15,13 +15,12 @@ interface BattleLobbyModalProps {
   onFinishBattle: (earnedXp: number, earnedCoins: number) => void;
 }
 
-const TOPICS = [
-  { id: 'all', name: 'Semua Tajuk', icon: '🌟' },
-  { id: 'sub-akidah', name: 'Akidah', icon: '🛡️' },
-  { id: 'sub-fekah', name: 'Fekah', icon: '📖' },
-  { id: 'sub-akhlak', name: 'Akhlak', icon: '💖' },
-  { id: 'sub-sirah', name: 'Sirah', icon: '🧭' },
-];
+const TOPIC_ICONS: Record<string, string> = {
+  AKIDAH: '🛡️',
+  FEKAH: '📖',
+  AKHLAK: '💖',
+  SIRAH: '🧭',
+};
 
 const QUESTION_TIME_LIMIT = 15;
 const POLL_INTERVAL_MS = 2500;
@@ -44,6 +43,11 @@ export const BattleLobbyModal: React.FC<BattleLobbyModalProps> = ({
   const [creatingOrJoining, setCreatingOrJoining] = useState(false);
 
   const [selectedTopic, setSelectedTopic] = useState<string>('all');
+
+  const topics = [
+    { id: 'all', name: 'Semua Tajuk', icon: '🌟' },
+    ...subjects.map((s) => ({ id: s.id, name: s.name, icon: TOPIC_ICONS[s.name.toUpperCase()] || '📚' })),
+  ];
 
   const [battleQuestions, setBattleQuestions] = useState<Question[]>([]);
   const [currentQIndex, setCurrentQIndex] = useState(0);
@@ -170,16 +174,9 @@ export const BattleLobbyModal: React.FC<BattleLobbyModalProps> = ({
 
     return questions.filter((q) => {
       const sec = sections.find((s) => s.id === q.section_id);
-      if (sec) {
-        const pap = papers.find((p) => p.id === sec.paper_id);
-        if (pap) return pap.subject_id === selectedTopic;
-      }
-      const topicObj = TOPICS.find((t) => t.id === selectedTopic);
-      if (topicObj) {
-        const keyword = topicObj.name.toLowerCase();
-        return q.question_text.toLowerCase().includes(keyword) || (q.explanation && q.explanation.toLowerCase().includes(keyword));
-      }
-      return true;
+      if (!sec) return false;
+      const pap = papers.find((p) => p.id === sec.paper_id);
+      return pap?.subject_id === selectedTopic;
     });
   };
 
@@ -291,7 +288,7 @@ export const BattleLobbyModal: React.FC<BattleLobbyModalProps> = ({
                 </label>
 
                 <div className="grid grid-cols-2 sm:grid-cols-3 gap-2">
-                  {TOPICS.map((topic) => {
+                  {topics.map((topic) => {
                     const isSelected = selectedTopic === topic.id;
                     return (
                       <button
@@ -384,11 +381,10 @@ export const BattleLobbyModal: React.FC<BattleLobbyModalProps> = ({
 
                 <button
                   onClick={handleStartBattle}
-                  disabled={!activeRoom.guest_name}
-                  className="w-full py-3.5 bg-sage-500 hover:bg-sage-600 disabled:opacity-50 disabled:cursor-not-allowed text-white font-bold rounded-2xl text-sm transition-colors flex items-center justify-center gap-2"
+                  className="w-full py-3.5 bg-sage-500 hover:bg-sage-600 text-white font-bold rounded-2xl text-sm transition-colors flex items-center justify-center gap-2"
                 >
                   <Play className="w-5 h-5 fill-white" />
-                  <span>{activeRoom.guest_name ? 'Mula Cabaran Battle 10 Soalan!' : 'Menunggu Rakan Sertai...'}</span>
+                  <span>{activeRoom.guest_name ? 'Mula Cabaran Battle 10 Soalan!' : 'Mula Latihan Solo (Tanpa Tunggu)'}</span>
                 </button>
               </div>
             )}
@@ -436,7 +432,7 @@ export const BattleLobbyModal: React.FC<BattleLobbyModalProps> = ({
               <div className="flex items-center justify-between text-xs text-ink-500">
                 <span className="font-bold text-honey-500">Soalan {currentQIndex + 1} / {battleQuestions.length}</span>
                 <span className="text-[11px] font-bold uppercase tracking-wide">
-                  {TOPICS.find((t) => t.id === selectedTopic)?.name || 'Pendidikan Islam'}
+                  {topics.find((t) => t.id === selectedTopic)?.name || 'Pendidikan Islam'}
                 </span>
               </div>
               <h3 className="text-base font-bold text-ink-900">{currentQ.question_text}</h3>
