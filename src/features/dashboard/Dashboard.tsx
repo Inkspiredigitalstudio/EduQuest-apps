@@ -24,6 +24,8 @@ interface DashboardProps {
   sections?: Section[];
   userProgress?: UserProgress[];
   dailyMissions: DailyMission[];
+  isContentLoading?: boolean;
+  contentLoadFailed?: boolean;
   onSelectSubject: (subject: Subject) => void;
   onSelectSection?: (paper: Paper, section: Section) => void;
   onOpenAuth: () => void;
@@ -68,6 +70,8 @@ export const Dashboard: React.FC<DashboardProps> = ({
   sections,
   userProgress,
   dailyMissions,
+  isContentLoading,
+  contentLoadFailed,
   onSelectSubject,
   onSelectSection,
   onOpenAuth,
@@ -276,7 +280,20 @@ export const Dashboard: React.FC<DashboardProps> = ({
           })}
         </div>
 
-        {activeModuleTab === 'sppim' ? (
+        {isContentLoading ? (
+          <div className="bg-cream-50 border border-sand-200 rounded-3xl p-10 text-center space-y-3">
+            <div className="w-10 h-10 border-4 border-mist-200 border-t-mist-500 rounded-full animate-spin mx-auto" />
+            <p className="text-sm text-ink-500 font-semibold">Memuatkan soalan...</p>
+          </div>
+        ) : contentLoadFailed ? (
+          <div className="bg-clay-100 border border-clay-200 rounded-3xl p-8 text-center space-y-2">
+            <BookOpen className="w-8 h-8 text-clay-500 mx-auto" />
+            <h3 className="text-sm font-display font-bold text-ink-900">Tidak Dapat Muatkan Soalan</h3>
+            <p className="text-xs text-ink-500 max-w-xs mx-auto">
+              Sila semak sambungan internet dan cuba muat semula halaman ini.
+            </p>
+          </div>
+        ) : activeModuleTab === 'sppim' ? (
           <div className="grid grid-cols-1 md:grid-cols-3 gap-4 pt-1">
             {subjects.map((sub) => {
               const IconComponent = ICON_MAP[sub.icon] || BookOpen;
