@@ -2,7 +2,7 @@ import React, { useState } from 'react';
 import { registerUser, loginUser } from '../../lib/supabase';
 import { UserProfile } from '../../types';
 import { soundManager } from '../../lib/audio';
-import { User, Lock, Phone, Sparkles, Key, CheckCircle2, Copy, AlertCircle, ArrowRight, X, GraduationCap, Heart, RefreshCw, HelpCircle, Send, ArrowLeft, ShieldCheck } from 'lucide-react';
+import { User, Lock, Phone, Sparkles, Key, CheckCircle2, Copy, AlertCircle, ArrowRight, X, GraduationCap, Heart, RefreshCw, HelpCircle, Send, ArrowLeft } from 'lucide-react';
 
 // Admin support inbox for "Forgot Password" requests. Change this to the real
 // admin email address before going live.
@@ -20,7 +20,7 @@ export const AuthModal: React.FC<AuthModalProps> = ({ isOpen, onClose, onSuccess
   const [customUsername, setCustomUsername] = useState('');
   const [password, setPassword] = useState('');
   const [phone, setPhone] = useState('');
-  const [role, setRole] = useState<'student' | 'parent' | 'admin'>('student');
+  const [role, setRole] = useState<'student' | 'parent'>('student');
 
   const [loginIdInput, setLoginIdInput] = useState('');
   const [errorMsg, setErrorMsg] = useState('');
@@ -319,22 +319,23 @@ export const AuthModal: React.FC<AuthModalProps> = ({ isOpen, onClose, onSuccess
 
                 <div>
                   <label className="block text-xs font-bold text-ink-700 mb-2">Pilih Peranan Akaun</label>
-                  <div className="grid grid-cols-3 gap-2">
+                  <div className="grid grid-cols-2 gap-2.5">
                     <button
                       type="button"
                       onClick={() => {
                         setRole('student');
                         soundManager.playClick();
                       }}
-                      className={`p-3 rounded-2xl border-2 text-left transition-colors flex flex-col items-center justify-center text-center gap-1.5 ${
+                      className={`p-3.5 rounded-2xl border-2 text-left transition-colors flex flex-col items-center justify-center text-center gap-1.5 ${
                         role === 'student'
                           ? 'bg-mist-100 border-mist-400 text-ink-900'
                           : 'bg-cream-50 border-sand-200 text-ink-500 hover:border-sand-300'
                       }`}
                     >
-                      <GraduationCap className={`w-5 h-5 ${role === 'student' ? 'text-mist-600' : 'text-ink-300'}`} />
+                      <GraduationCap className={`w-6 h-6 ${role === 'student' ? 'text-mist-600' : 'text-ink-300'}`} />
                       <div>
-                        <div className="text-[11px] font-bold">Pelajar</div>
+                        <div className="text-xs font-bold">Pelajar</div>
+                        <div className="text-[10px] opacity-75">Soalan &amp; Battle</div>
                       </div>
                     </button>
 
@@ -344,34 +345,16 @@ export const AuthModal: React.FC<AuthModalProps> = ({ isOpen, onClose, onSuccess
                         setRole('parent');
                         soundManager.playClick();
                       }}
-                      className={`p-3 rounded-2xl border-2 text-left transition-colors flex flex-col items-center justify-center text-center gap-1.5 ${
+                      className={`p-3.5 rounded-2xl border-2 text-left transition-colors flex flex-col items-center justify-center text-center gap-1.5 ${
                         role === 'parent'
                           ? 'bg-sage-100 border-sage-400 text-ink-900'
                           : 'bg-cream-50 border-sand-200 text-ink-500 hover:border-sand-300'
                       }`}
                     >
-                      <Heart className={`w-5 h-5 ${role === 'parent' ? 'text-sage-600' : 'text-ink-300'}`} />
+                      <Heart className={`w-6 h-6 ${role === 'parent' ? 'text-sage-600' : 'text-ink-300'}`} />
                       <div>
-                        <div className="text-[11px] font-bold">Ibu Bapa</div>
-                      </div>
-                    </button>
-
-                    {/* Admin — TEMPORARY bootstrap option, remove after real admin is set up */}
-                    <button
-                      type="button"
-                      onClick={() => {
-                        setRole('admin');
-                        soundManager.playClick();
-                      }}
-                      className={`p-3 rounded-2xl border-2 text-left transition-colors flex flex-col items-center justify-center text-center gap-1.5 ${
-                        role === 'admin'
-                          ? 'bg-honey-100 border-honey-400 text-ink-900'
-                          : 'bg-cream-50 border-sand-200 text-ink-500 hover:border-sand-300'
-                      }`}
-                    >
-                      <ShieldCheck className={`w-5 h-5 ${role === 'admin' ? 'text-honey-500' : 'text-ink-300'}`} />
-                      <div>
-                        <div className="text-[11px] font-bold">Admin</div>
+                        <div className="text-xs font-bold">Ibu Bapa</div>
+                        <div className="text-[10px] opacity-75">Pantau Anak</div>
                       </div>
                     </button>
                   </div>
