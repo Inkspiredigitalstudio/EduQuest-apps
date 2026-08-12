@@ -1,12 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { UserProfile, Subject, Paper, Section, Question, UserProgress, DailyMission } from './types';
-import {
-  INITIAL_SUBJECTS,
-  INITIAL_PAPERS,
-  INITIAL_SECTIONS,
-  INITIAL_QUESTIONS,
-  DEFAULT_DAILY_MISSIONS,
-} from './data/seedData';
+import { DEFAULT_DAILY_MISSIONS } from './data/seedData';
 import {
   getCurrentUser,
   checkAndRestoreSession,
@@ -16,6 +10,10 @@ import {
   saveAttempt,
   logoutStudent,
   fetchExamDataFromSupabase,
+  addQuestionToSupabase,
+  updateQuestionInSupabase,
+  deleteQuestionFromSupabase,
+  bulkAddQuestionsToSupabase,
 } from './lib/supabase';
 import { soundManager } from './lib/audio';
 
@@ -96,10 +94,10 @@ export default function App() {
   } | null>(null);
 
   // Data collections
-  const [subjects, setSubjects] = useState<Subject[]>(INITIAL_SUBJECTS);
-  const [papers, setPapers] = useState<Paper[]>(INITIAL_PAPERS);
-  const [sections, setSections] = useState<Section[]>(INITIAL_SECTIONS);
-  const [questions, setQuestions] = useState<Question[]>(INITIAL_QUESTIONS);
+  const [subjects, setSubjects] = useState<Subject[]>([]);
+  const [papers, setPapers] = useState<Paper[]>([]);
+  const [sections, setSections] = useState<Section[]>([]);
+  const [questions, setQuestions] = useState<Question[]>([]);
   const [dailyMissions, setDailyMissions] = useState<DailyMission[]>(DEFAULT_DAILY_MISSIONS);
   const [userProgress, setUserProgress] = useState<UserProgress[]>([]);
 
@@ -133,40 +131,28 @@ export default function App() {
     }
   }, [user]);
 
-  // Fetch live subjects, papers, sections & questions from Supabase if configured
+  // Fetch subjects, papers, sections & questions from Supabase — this is now
+  // the source of truth for content (local seed data is just an empty-state
+  // placeholder shown while this loads, or if Supabase is unreachable).
+  const [isContentLoading, setIsContentLoading] = useState(true);
+  const [contentLoadFailed, setContentLoadFailed] = useState(false);
+
   useEffect(() => {
     async function loadRemoteContent() {
+      setIsContentLoading(true);
       const remote = await fetchExamDataFromSupabase();
-      if (remote) {
-        if (remote.subjects && remote.subjects.length > 0) {
-          setSubjects((prev) => {
-            const map = new Map(prev.map((s) => [s.id, s]));
-            remote.subjects!.forEach((s) => map.set(s.id, s));
-            return Array.from(map.values());
-          });
-        }
-        if (remote.papers && remote.papers.length > 0) {
-          setPapers((prev) => {
-            const map = new Map(prev.map((p) => [p.id, p]));
-            remote.papers!.forEach((p) => map.set(p.id, p));
-            return Array.from(map.values());
-          });
-        }
-        if (remote.sections && remote.sections.length > 0) {
-          setSections((prev) => {
-            const map = new Map(prev.map((sec) => [sec.id, sec]));
-            remote.sections!.forEach((sec) => map.set(sec.id, sec));
-            return Array.from(map.values());
-          });
-        }
-        if (remote.questions && remote.questions.length > 0) {
-          setQuestions((prev) => {
-            const map = new Map(prev.map((q) => [q.id, q]));
-            remote.questions!.forEach((q) => map.set(q.id, q));
-            return Array.from(map.values());
-          });
-        }
+
+      if (remote && remote.subjects && remote.subjects.length > 0) {
+        setSubjects(remote.subjects);
+        setPapers(remote.papers || []);
+        setSections(remote.sections || []);
+        setQuestions(remote.questions || []);
+        setContentLoadFailed(false);
+      } else {
+        // Supabase not configured, unreachable, or empty — nothing to show.
+        setContentLoadFailed(true);
       }
+      setIsContentLoading(false);
     }
     loadRemoteContent();
   }, []);
@@ -229,7 +215,7 @@ export default function App() {
     setDailyMissions((prev) =>
       prev.map((m) => {
         if (m.id === 'm-1') return { ...m, current: Math.min(m.target, m.current + 1), is_completed: true };
-        if (m.id === 'm-2' && activeSubject?.id === 'sub-fekah') {
+        if (m.id === 'm-2' && activeSubject?.name?.toUpperCase().includes('FEKAH')) {
           const newCurr = m.current + score;
           return { ...m, current: newCurr, is_completed: newCurr >= m.target };
         }
@@ -243,23 +229,47 @@ export default function App() {
   };
 
   // ------------------------- Admin question-bank management -------------------------
-  // Local-state only, matching how this app already handles the question bank
-  // (subjects/papers/sections/questions are seeded + optionally pulled from
-  // Supabase read-only; there is no write-sync path back to Supabase here).
-  const handleAddQuestion = (newQ: Question) => {
+  // Optimistic local update for instant UI feedback, then persisted for real to
+  // Supabase — Admin edits now survive refresh/redeploy instead of living only
+  // in browser memory for the current session.
+  const handleAddQuestion = async (newQ: Question) => {
     setQuestions((prev) => [newQ, ...prev]);
+
+    const choicesPayload = newQ.choices.map((c) => ({ text: c.option_text, correct: c.is_correct }));
+    const saved = await addQuestionToSupabase(newQ.section_id, newQ.question_text, newQ.explanation, choicesPayload, newQ.order, newQ.difficulty);
+    if (saved) {
+      setQuestions((prev) => prev.map((q) => (q.id === newQ.id ? saved : q)));
+    }
   };
 
-  const handleUpdateQuestion = (updatedQ: Question) => {
+  const handleUpdateQuestion = async (updatedQ: Question) => {
     setQuestions((prev) => prev.map((q) => (q.id === updatedQ.id ? updatedQ : q)));
+    await updateQuestionInSupabase(updatedQ);
   };
 
-  const handleDeleteQuestion = (questionId: string) => {
+  const handleDeleteQuestion = async (questionId: string) => {
     setQuestions((prev) => prev.filter((q) => q.id !== questionId));
+    await deleteQuestionFromSupabase(questionId);
   };
 
-  const handleBulkAddQuestions = (newQuestions: Question[]) => {
+  const handleBulkAddQuestions = async (newQuestions: Question[]) => {
     setQuestions((prev) => [...newQuestions, ...prev]);
+
+    const payload = newQuestions.map((q) => ({
+      section_id: q.section_id,
+      question_text: q.question_text,
+      explanation: q.explanation,
+      difficulty: q.difficulty,
+      choices: q.choices.map((c) => ({ text: c.option_text, correct: c.is_correct })),
+    }));
+    const saved = await bulkAddQuestionsToSupabase(payload);
+    if (saved.length > 0) {
+      setQuestions((prev) => {
+        const tempIds = new Set(newQuestions.map((q) => q.id));
+        const withoutTemps = prev.filter((q) => !tempIds.has(q.id));
+        return [...saved, ...withoutTemps];
+      });
+    }
   };
 
   const handleLogout = () => {
@@ -335,6 +345,8 @@ export default function App() {
             sections={sections}
             userProgress={userProgress}
             dailyMissions={dailyMissions}
+            isContentLoading={isContentLoading}
+            contentLoadFailed={contentLoadFailed}
             onSelectSubject={handleSelectSubject}
             onSelectSection={handleSelectSection}
             onOpenAuth={() => setIsAuthOpen(true)}
