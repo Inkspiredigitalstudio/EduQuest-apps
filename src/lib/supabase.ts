@@ -1,6 +1,5 @@
 import { createClient, SupabaseClient } from '@supabase/supabase-js';
 import { UserProfile, UserProgress, UserAttempt, Subject, Paper, Section, Question, Choice, StudentLink, FriendRequest, BattleRoom, Achievement } from '../types';
-import { INITIAL_SUBJECTS, INITIAL_PAPERS, INITIAL_SECTIONS, INITIAL_QUESTIONS } from '../data/seedData';
 
 const supabaseUrl = (import.meta.env.VITE_SUPABASE_URL || '').trim();
 const supabaseAnonKey = (import.meta.env.VITE_SUPABASE_ANON_KEY || '').trim();
@@ -66,6 +65,97 @@ export async function testSupabaseConnection(): Promise<{ ok: boolean; message: 
   }
 }
 
+// ------------------------- Question bank — real Supabase persistence -------------------------
+// Content management now writes straight to Supabase (questions + choices),
+// so Admin edits survive refresh/redeploy instead of living only in browser
+// memory for the current session.
+
+export async function addQuestionToSupabase(
+  sectionId: string,
+  questionText: string,
+  explanation: string,
+  choices: { text: string; correct: boolean }[],
+  order: number = 1,
+  difficulty?: string
+): Promise<Question | null> {
+  if (!isSupabaseConfigured || !supabase) return null;
+  try {
+    const { data: qData, error: qErr } = await supabase
+      .from('questions')
+      .insert({ section_id: sectionId, question_text: questionText, explanation, order })
+      .select()
+      .single();
+    if (qErr || !qData) throw qErr || new Error('Tiada data dikembalikan.');
+
+    const choiceRows = choices.map((c) => ({ question_id: qData.id, option_text: c.text, is_correct: c.correct }));
+    const { data: cData, error: cErr } = await supabase.from('choices').insert(choiceRows).select();
+    if (cErr) throw cErr;
+
+    return {
+      id: qData.id,
+      section_id: sectionId,
+      question_text: questionText,
+      explanation,
+      order: qData.order ?? order,
+      choices: (cData || []).map((c: any) => ({ id: c.id, question_id: c.question_id, option_text: c.option_text, is_correct: Boolean(c.is_correct) })),
+      difficulty: difficulty as any,
+    };
+  } catch (e) {
+    console.warn('Failed to add question to Supabase:', e);
+    return null;
+  }
+}
+
+export async function updateQuestionInSupabase(question: Question): Promise<boolean> {
+  if (!isSupabaseConfigured || !supabase) return false;
+  try {
+    const { error: qErr } = await supabase
+      .from('questions')
+      .update({ section_id: question.section_id, question_text: question.question_text, explanation: question.explanation, order: question.order })
+      .eq('id', question.id);
+    if (qErr) throw qErr;
+
+    // Simplest reliable approach: replace all choices for this question
+    const { error: delErr } = await supabase.from('choices').delete().eq('question_id', question.id);
+    if (delErr) throw delErr;
+
+    const choiceRows = question.choices.map((c) => ({ question_id: question.id, option_text: c.option_text, is_correct: c.is_correct }));
+    const { error: insErr } = await supabase.from('choices').insert(choiceRows);
+    if (insErr) throw insErr;
+
+    return true;
+  } catch (e) {
+    console.warn('Failed to update question in Supabase:', e);
+    return false;
+  }
+}
+
+export async function deleteQuestionFromSupabase(questionId: string): Promise<boolean> {
+  if (!isSupabaseConfigured || !supabase) return false;
+  try {
+    // choices reference question_id without ON DELETE CASCADE in the migrated
+    // schema, so clear them explicitly first.
+    await supabase.from('choices').delete().eq('question_id', questionId);
+    const { error } = await supabase.from('questions').delete().eq('id', questionId);
+    if (error) throw error;
+    return true;
+  } catch (e) {
+    console.warn('Failed to delete question from Supabase:', e);
+    return false;
+  }
+}
+
+export async function bulkAddQuestionsToSupabase(
+  items: { section_id: string; question_text: string; explanation: string; difficulty?: string; choices: { text: string; correct: boolean }[] }[]
+): Promise<Question[]> {
+  if (!isSupabaseConfigured || !supabase) return [];
+  const results: Question[] = [];
+  for (const item of items) {
+    const q = await addQuestionToSupabase(item.section_id, item.question_text, item.explanation, item.choices, 1, item.difficulty);
+    if (q) results.push(q);
+  }
+  return results;
+}
 // Local fallback storage keys
 const LOCAL_USER_KEY = 'sppim_local_active_user';
 const LOCAL_USERS_LIST_KEY = 'sppim_local_users_db';
@@ -156,7 +246,7 @@ export async function updateUserRole(
 export async function registerUser(
   displayName: string,
   password: string,
-  role: 'student' | 'parent' | 'admin' = 'student',
+  role: 'student' | 'parent' = 'student',
   phone?: string,
   customUsername?: string
 ): Promise<{
@@ -746,8 +836,8 @@ export async function fetchExamDataFromSupabase(): Promise<{
     ] = await Promise.all([
       supabase.from('subjects').select('*'),
       supabase.from('papers').select('*'),
-      supabase.from('sections').select('*').order('order_num', { ascending: true }),
-      supabase.from('questions').select('*').order('order_num', { ascending: true }),
+      supabase.from('sections').select('*').order('order', { ascending: true }),
+      supabase.from('questions').select('*').order('order', { ascending: true }),
       supabase.from('choices').select('*'),
     ]);
 
@@ -764,7 +854,7 @@ export async function fetchExamDataFromSupabase(): Promise<{
         icon: s.icon || 'BookOpen',
         description: s.description || '',
         status: s.status || 'active',
-        color: s.color || 'from-amber-600 to-orange-600',
+        color: s.color || 'from-mist-400 to-mist-500',
       }));
     }
 
@@ -786,7 +876,7 @@ export async function fetchExamDataFromSupabase(): Promise<{
         paper_id: sec.paper_id,
         name: sec.name,
         title: sec.title || `Bahagian ${sec.name}`,
-        order: sec.order_num ?? sec.order ?? 1,
+        order: sec.order ?? 1,
       }));
     }
 
@@ -811,8 +901,9 @@ export async function fetchExamDataFromSupabase(): Promise<{
         section_id: q.section_id,
         question_text: q.question_text,
         explanation: q.explanation || '',
-        order: q.order_num ?? q.order ?? 1,
+        order: q.order ?? 1,
         choices: choicesMap.get(q.id) || [],
+        difficulty: q.difficulty || undefined,
       }));
     }
 
