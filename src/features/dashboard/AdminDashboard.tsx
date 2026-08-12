@@ -75,6 +75,15 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
   // ---- Manual Add / Update form state ----
   const [editingId, setEditingId] = useState<string | null>(null);
   const [selectedSectionId, setSelectedSectionId] = useState<string>(sections[0]?.id || '');
+
+  // Sections now arrive asynchronously from Supabase (may be empty at mount) —
+  // pick a default once they're actually available, and if the selection is
+  // never made (e.g. resetForm reset it to something unset), fall back safely.
+  useEffect(() => {
+    if (!selectedSectionId && sections.length > 0) {
+      setSelectedSectionId(sections[0].id);
+    }
+  }, [sections, selectedSectionId]);
   const [qText, setQText] = useState('');
   const [qExplanation, setQExplanation] = useState('');
   const [optA, setOptA] = useState('');
