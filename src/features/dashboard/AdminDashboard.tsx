@@ -154,6 +154,7 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
   // ---- Question bank search / filter (helps find one question among many) ----
   const [questionSearch, setQuestionSearch] = useState('');
   const [questionSubjectFilter, setQuestionSubjectFilter] = useState<string>('all');
+  const [questionSectionFilter, setQuestionSectionFilter] = useState<string>('all');
 
   const getSubjectForQuestion = (q: Question): Subject | undefined => {
     const sec = sections.find((s) => s.id === q.section_id);
@@ -163,10 +164,27 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
     return subjects.find((s) => s.id === paper.subject_id);
   };
 
+  // Bahagian (section) options are scoped to the currently-selected subject —
+  // a section only makes sense to pick once we know which subject's papers to look under.
+  const sectionsForSubjectFilter = questionSubjectFilter === 'all'
+    ? []
+    : sections.filter((s) => {
+        const paper = papers.find((p) => p.id === s.paper_id);
+        return paper?.subject_id === questionSubjectFilter;
+      });
+
+  const handleQuestionSubjectFilterChange = (value: string) => {
+    setQuestionSubjectFilter(value);
+    setQuestionSectionFilter('all'); // reset Bahagian pick — old selection may not belong to the new subject
+  };
+
   const filteredQuestions = questions.filter((q) => {
     if (questionSubjectFilter !== 'all') {
       const subj = getSubjectForQuestion(q);
       if (subj?.id !== questionSubjectFilter) return false;
+    }
+    if (questionSectionFilter !== 'all' && q.section_id !== questionSectionFilter) {
+      return false;
     }
     if (questionSearch.trim()) {
       return q.question_text.toLowerCase().includes(questionSearch.trim().toLowerCase());
@@ -554,8 +572,8 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
                     <span>Bank Soalan Sedia Ada ({filteredQuestions.length} / {questions.length})</span>
                   </h3>
 
-                  <div className="flex flex-col sm:flex-row gap-2">
-                    <div className="relative flex-1">
+                  <div className="flex flex-col sm:flex-row sm:flex-wrap gap-2">
+                    <div className="relative flex-1 min-w-[140px]">
                       <Search className="w-3.5 h-3.5 text-ink-300 absolute left-3 top-3 pointer-events-none" />
                       <input
                         type="text"
@@ -567,13 +585,31 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
                     </div>
                     <select
                       value={questionSubjectFilter}
-                      onChange={(e) => setQuestionSubjectFilter(e.target.value)}
-                      className="bg-cream-100 border border-sand-300 text-ink-900 text-xs rounded-xl px-3 py-2 outline-none focus:border-mist-400"
+                      onChange={(e) => handleQuestionSubjectFilterChange(e.target.value)}
+                      className="w-full sm:w-40 bg-cream-100 border border-sand-300 text-ink-900 text-xs rounded-xl px-3 py-2 outline-none focus:border-mist-400 truncate"
                     >
                       <option value="all">Semua Subjek</option>
                       {subjects.map((s) => (
                         <option key={s.id} value={s.id}>{s.name}</option>
                       ))}
+                    </select>
+                    <select
+                      value={questionSectionFilter}
+                      onChange={(e) => setQuestionSectionFilter(e.target.value)}
+                      disabled={questionSubjectFilter === 'all'}
+                      className="w-full sm:w-48 bg-cream-100 border border-sand-300 text-ink-900 text-xs rounded-xl px-3 py-2 outline-none focus:border-mist-400 disabled:opacity-50 disabled:cursor-not-allowed truncate"
+                    >
+                      <option value="all">
+                        {questionSubjectFilter === 'all' ? 'Pilih Subjek Dahulu' : 'Semua Bahagian'}
+                      </option>
+                      {sectionsForSubjectFilter.map((s) => {
+                        const paper = papers.find((p) => p.id === s.paper_id);
+                        return (
+                          <option key={s.id} value={s.id}>
+                            {paper ? `${paper.title} — ` : ''}{s.title}
+                          </option>
+                        );
+                      })}
                     </select>
                   </div>
 
