@@ -57,6 +57,7 @@ export interface Question {
   order: number;
   choices: Choice[];
   difficulty?: 'mudah' | 'sederhana' | 'sukar';
+  image_url?: string;
 }
 
 export interface UserProgress {
