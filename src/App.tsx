@@ -236,7 +236,7 @@ export default function App() {
     setQuestions((prev) => [newQ, ...prev]);
 
     const choicesPayload = newQ.choices.map((c) => ({ text: c.option_text, correct: c.is_correct }));
-    const saved = await addQuestionToSupabase(newQ.section_id, newQ.question_text, newQ.explanation, choicesPayload, newQ.order, newQ.difficulty);
+    const saved = await addQuestionToSupabase(newQ.section_id, newQ.question_text, newQ.explanation, choicesPayload, newQ.order, newQ.difficulty, newQ.image_url);
     if (saved) {
       setQuestions((prev) => prev.map((q) => (q.id === newQ.id ? saved : q)));
     }
@@ -260,6 +260,7 @@ export default function App() {
       question_text: q.question_text,
       explanation: q.explanation,
       difficulty: q.difficulty,
+      image_url: q.image_url,
       choices: q.choices.map((c) => ({ text: c.option_text, correct: c.is_correct })),
     }));
     const saved = await bulkAddQuestionsToSupabase(payload);
