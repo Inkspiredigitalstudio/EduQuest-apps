@@ -212,9 +212,15 @@ export const ExamScreen: React.FC<ExamScreenProps> = ({ section, questions: rawQ
             <span>Pilih SATU jawapan yang betul</span>
           </div>
 
-          <h2 className="text-xl sm:text-2xl font-display font-bold text-ink-900 leading-relaxed pt-1">
+          <h2 className="text-xl sm:text-2xl font-display font-bold text-ink-900 leading-relaxed pt-1 whitespace-pre-line">
             {currentQuestion.question_text}
           </h2>
+
+          {currentQuestion.image_url && (
+            <div className="rounded-2xl overflow-hidden border border-sand-200 bg-cream-100">
+              <img src={currentQuestion.image_url} alt="Gambar soalan" className="w-full max-h-72 object-contain" />
+            </div>
+          )}
         </div>
 
         <div className="space-y-3 pt-2">

@@ -286,11 +286,17 @@ Untuk tengok progress ${studentName} lagi lanjut, boleh ke EduQuest App.`;
                 return (
                   <div key={q.id} className="p-4 rounded-2xl border bg-clay-100 border-clay-200">
                     <div className="flex items-start justify-between gap-3 mb-2">
-                      <h3 className="text-sm font-bold text-ink-900">{idx + 1}. {q.question_text}</h3>
+                      <h3 className="text-sm font-bold text-ink-900 whitespace-pre-line">{idx + 1}. {q.question_text}</h3>
                       <span className="flex items-center gap-1 text-xs font-bold text-clay-500 bg-cream-50 px-2.5 py-0.5 rounded-full shrink-0">
                         <XCircle className="w-3.5 h-3.5" /> Salah
                       </span>
                     </div>
+
+                    {q.image_url && (
+                      <div className="rounded-xl overflow-hidden border border-sand-200 bg-cream-50 mb-2">
+                        <img src={q.image_url} alt="Gambar soalan" className="w-full max-h-56 object-contain" />
+                      </div>
+                    )}
 
                     <div className="text-xs space-y-1 my-2 font-medium">
                       {userChoice && (
