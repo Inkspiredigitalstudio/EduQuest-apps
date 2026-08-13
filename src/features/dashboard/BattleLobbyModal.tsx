@@ -435,7 +435,13 @@ export const BattleLobbyModal: React.FC<BattleLobbyModalProps> = ({
                   {topics.find((t) => t.id === selectedTopic)?.name || 'Pendidikan Islam'}
                 </span>
               </div>
-              <h3 className="text-base font-bold text-ink-900">{currentQ.question_text}</h3>
+              <h3 className="text-base font-bold text-ink-900 whitespace-pre-line">{currentQ.question_text}</h3>
+
+              {currentQ.image_url && (
+                <div className="rounded-xl overflow-hidden border border-sand-200 bg-cream-50">
+                  <img src={currentQ.image_url} alt="Gambar soalan" className="w-full max-h-56 object-contain" />
+                </div>
+              )}
 
               {isTimeout && (
                 <div className="bg-clay-100 p-2 rounded-xl text-xs text-clay-500 font-bold flex items-center justify-center gap-2">
