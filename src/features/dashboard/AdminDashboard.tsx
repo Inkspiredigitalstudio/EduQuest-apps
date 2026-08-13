@@ -6,6 +6,7 @@ import { soundManager } from '../../lib/audio';
 import {
   Shield, Database, Plus, CheckCircle2, Code2, Copy, LogOut, Sun, Moon,
   Pencil, Trash2, X, AlertCircle, Upload, ListChecks, Lock, Users, Search, KeyRound, RefreshCw,
+  Image as ImageIcon,
 } from 'lucide-react';
 
 interface AdminDashboardProps {
@@ -41,6 +42,7 @@ const IMPORT_PLACEHOLDER = `[
     "question_text": "Apakah hukum solat fardu bagi orang Islam yang baligh?",
     "explanation": "Solat fardu adalah wajib ke atas setiap Muslim yang baligh dan berakal.",
     "difficulty": "mudah",
+    "image_url": "",
     "choices": [
       { "text": "Wajib", "correct": true },
       { "text": "Sunat", "correct": false },
@@ -92,6 +94,7 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
   const [optD, setOptD] = useState('');
   const [correctOptIndex, setCorrectOptIndex] = useState<number>(0);
   const [difficulty, setDifficulty] = useState<'mudah' | 'sederhana' | 'sukar'>('sederhana');
+  const [imageUrl, setImageUrl] = useState('');
   const [formMsg, setFormMsg] = useState('');
 
   // ---- Bulk import state ----
@@ -125,6 +128,7 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
     setOptD('');
     setCorrectOptIndex(0);
     setDifficulty('sederhana');
+    setImageUrl('');
     setSelectedSectionId(sections[0]?.id || '');
   };
 
@@ -136,6 +140,7 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
     setQText(q.question_text);
     setQExplanation(q.explanation || '');
     setDifficulty(q.difficulty || 'sederhana');
+    setImageUrl(q.image_url || '');
     const opts = q.choices || [];
     setOptA(opts[0]?.option_text || '');
     setOptB(opts[1]?.option_text || '');
@@ -145,6 +150,29 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
     setCorrectOptIndex(correctIdx >= 0 ? correctIdx : 0);
     setFormMsg('');
   };
+
+  // ---- Question bank search / filter (helps find one question among many) ----
+  const [questionSearch, setQuestionSearch] = useState('');
+  const [questionSubjectFilter, setQuestionSubjectFilter] = useState<string>('all');
+
+  const getSubjectForQuestion = (q: Question): Subject | undefined => {
+    const sec = sections.find((s) => s.id === q.section_id);
+    if (!sec) return undefined;
+    const paper = papers.find((p) => p.id === sec.paper_id);
+    if (!paper) return undefined;
+    return subjects.find((s) => s.id === paper.subject_id);
+  };
+
+  const filteredQuestions = questions.filter((q) => {
+    if (questionSubjectFilter !== 'all') {
+      const subj = getSubjectForQuestion(q);
+      if (subj?.id !== questionSubjectFilter) return false;
+    }
+    if (questionSearch.trim()) {
+      return q.question_text.toLowerCase().includes(questionSearch.trim().toLowerCase());
+    }
+    return true;
+  });
 
   const handleDeleteClick = (q: Question) => {
     if (!confirm(`Padam soalan ini secara kekal?\n\n"${q.question_text.slice(0, 60)}..."`)) return;
@@ -177,6 +205,7 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
       order: editingId ? (questions.find((q) => q.id === editingId)?.order ?? questions.length + 1) : questions.length + 1,
       choices,
       difficulty,
+      image_url: imageUrl.trim() || undefined,
     };
 
     if (editingId) {
@@ -223,6 +252,7 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
           order: questions.length + idx + 1,
           choices,
           difficulty: ['mudah', 'sederhana', 'sukar'].includes(item.difficulty) ? item.difficulty : undefined,
+          image_url: item.image_url && String(item.image_url).trim() ? String(item.image_url).trim() : undefined,
         } as Question;
       });
 
@@ -474,6 +504,35 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
                     </div>
 
                     <div>
+                      <label className="block text-xs font-bold text-ink-700 mb-1 flex items-center gap-1.5">
+                        <ImageIcon className="w-3.5 h-3.5 text-mist-500" />
+                        <span>Gambar Soalan (Pilihan)</span>
+                      </label>
+                      <input
+                        type="url"
+                        value={imageUrl}
+                        onChange={(e) => setImageUrl(e.target.value)}
+                        placeholder="https://... (link gambar dari Supabase Storage)"
+                        className={inputCls}
+                      />
+                      <p className="text-[10px] text-ink-500 mt-1">
+                        Upload gambar dalam Supabase → Storage → bucket "question-images", salin "Public URL", paste di sini. Cadangan: JPG/PNG, lebar maks ~1000px, bawah 500KB supaya cepat load.
+                      </p>
+                      {imageUrl.trim() && (
+                        <div className="mt-2 rounded-xl border border-sand-200 overflow-hidden bg-cream-100 p-2">
+                          <img
+                            src={imageUrl.trim()}
+                            alt="Pratonton gambar soalan"
+                            className="max-h-40 mx-auto rounded-lg object-contain"
+                            onError={(e) => {
+                              (e.target as HTMLImageElement).style.display = 'none';
+                            }}
+                          />
+                        </div>
+                      )}
+                    </div>
+
+                    <div>
                       <label className="block text-xs font-bold text-ink-700 mb-1">Nota Penerangan / Dalil</label>
                       <input type="text" value={qExplanation} onChange={(e) => setQExplanation(e.target.value)} placeholder="Penerangan hukum untuk jawapan betul..." className={inputCls} />
                     </div>
@@ -492,36 +551,75 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
                 <div className="bg-cream-50 border border-sand-200 rounded-3xl p-5 space-y-3">
                   <h3 className="text-sm font-bold text-ink-700 flex items-center gap-2">
                     <ListChecks className="w-4 h-4 text-mist-500" />
-                    <span>Bank Soalan Sedia Ada ({questions.length})</span>
+                    <span>Bank Soalan Sedia Ada ({filteredQuestions.length} / {questions.length})</span>
                   </h3>
 
+                  <div className="flex flex-col sm:flex-row gap-2">
+                    <div className="relative flex-1">
+                      <Search className="w-3.5 h-3.5 text-ink-300 absolute left-3 top-3 pointer-events-none" />
+                      <input
+                        type="text"
+                        value={questionSearch}
+                        onChange={(e) => setQuestionSearch(e.target.value)}
+                        placeholder="Cari teks soalan..."
+                        className="w-full pl-8 pr-3 py-2 bg-cream-100 border border-sand-300 focus:border-mist-400 text-ink-900 text-xs rounded-xl outline-none transition-colors"
+                      />
+                    </div>
+                    <select
+                      value={questionSubjectFilter}
+                      onChange={(e) => setQuestionSubjectFilter(e.target.value)}
+                      className="bg-cream-100 border border-sand-300 text-ink-900 text-xs rounded-xl px-3 py-2 outline-none focus:border-mist-400"
+                    >
+                      <option value="all">Semua Subjek</option>
+                      {subjects.map((s) => (
+                        <option key={s.id} value={s.id}>{s.name}</option>
+                      ))}
+                    </select>
+                  </div>
+
                   <div className="space-y-2 max-h-80 overflow-y-auto pr-1">
-                    {questions.map((q, idx) => (
-                      <div key={q.id} className="p-3 bg-cream-100 rounded-xl border border-sand-200 text-xs flex items-center justify-between gap-3">
-                        <div className="min-w-0 flex-1">
-                          <div className="flex items-center gap-1.5 flex-wrap">
-                            <span className="font-bold text-mist-600">#{idx + 1}</span>
-                            <span className="text-ink-700 truncate">{q.question_text}</span>
+                    {filteredQuestions.length === 0 ? (
+                      <div className="text-center py-6 text-xs text-ink-500">Tiada soalan sepadan carian.</div>
+                    ) : (
+                      filteredQuestions.map((q) => {
+                        const subj = getSubjectForQuestion(q);
+                        const idx = questions.indexOf(q);
+                        return (
+                          <div key={q.id} className="p-3 bg-cream-100 rounded-xl border border-sand-200 text-xs flex items-center justify-between gap-3">
+                            <div className="min-w-0 flex-1">
+                              <div className="flex items-center gap-1.5 flex-wrap">
+                                <span className="font-bold text-mist-600">#{idx + 1}</span>
+                                {subj && (
+                                  <span className="text-[10px] font-bold px-1.5 py-0.5 rounded bg-mist-100 text-mist-600">{subj.name}</span>
+                                )}
+                                <span className="text-ink-700 truncate">{q.question_text.split('\n')[0]}</span>
+                              </div>
+                              <div className="flex items-center gap-1.5 mt-1">
+                                <span className="text-[10px] text-ink-500 bg-cream-200 px-2 py-0.5 rounded">{q.choices.length} Pilihan</span>
+                                {q.image_url && (
+                                  <span className="text-[10px] text-mist-600 bg-mist-100 px-2 py-0.5 rounded flex items-center gap-1">
+                                    <ImageIcon className="w-2.5 h-2.5" /> Ada Gambar
+                                  </span>
+                                )}
+                                {q.difficulty && (
+                                  <span className={`text-[10px] font-bold px-2 py-0.5 rounded ${DIFFICULTY_COLOR[q.difficulty]}`}>
+                                    {DIFFICULTY_LABEL[q.difficulty]}
+                                  </span>
+                                )}
+                              </div>
+                            </div>
+                            <div className="flex items-center gap-1.5 shrink-0">
+                              <button onClick={() => handleEditClick(q)} className="p-2 rounded-lg bg-cream-50 hover:bg-mist-100 text-mist-600 border border-sand-200 transition-colors" title="Kemas Kini">
+                                <Pencil className="w-3.5 h-3.5" />
+                              </button>
+                              <button onClick={() => handleDeleteClick(q)} className="p-2 rounded-lg bg-cream-50 hover:bg-clay-100 text-clay-500 border border-sand-200 transition-colors" title="Padam">
+                                <Trash2 className="w-3.5 h-3.5" />
+                              </button>
+                            </div>
                           </div>
-                          <div className="flex items-center gap-1.5 mt-1">
-                            <span className="text-[10px] text-ink-500 bg-cream-200 px-2 py-0.5 rounded">{q.choices.length} Pilihan</span>
-                            {q.difficulty && (
-                              <span className={`text-[10px] font-bold px-2 py-0.5 rounded ${DIFFICULTY_COLOR[q.difficulty]}`}>
-                                {DIFFICULTY_LABEL[q.difficulty]}
-                              </span>
-                            )}
-                          </div>
-                        </div>
-                        <div className="flex items-center gap-1.5 shrink-0">
-                          <button onClick={() => handleEditClick(q)} className="p-2 rounded-lg bg-cream-50 hover:bg-mist-100 text-mist-600 border border-sand-200 transition-colors" title="Kemas Kini">
-                            <Pencil className="w-3.5 h-3.5" />
-                          </button>
-                          <button onClick={() => handleDeleteClick(q)} className="p-2 rounded-lg bg-cream-50 hover:bg-clay-100 text-clay-500 border border-sand-200 transition-colors" title="Padam">
-                            <Trash2 className="w-3.5 h-3.5" />
-                          </button>
-                        </div>
-                      </div>
-                    ))}
+                        );
+                      })
+                    )}
                   </div>
                 </div>
               </div>
