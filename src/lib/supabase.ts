@@ -76,13 +76,14 @@ export async function addQuestionToSupabase(
   explanation: string,
   choices: { text: string; correct: boolean }[],
   order: number = 1,
-  difficulty?: string
+  difficulty?: string,
+  imageUrl?: string
 ): Promise<Question | null> {
   if (!isSupabaseConfigured || !supabase) return null;
   try {
     const { data: qData, error: qErr } = await supabase
       .from('questions')
-      .insert({ section_id: sectionId, question_text: questionText, explanation, order })
+      .insert({ section_id: sectionId, question_text: questionText, explanation, order, image_url: imageUrl || null })
       .select()
       .single();
     if (qErr || !qData) throw qErr || new Error('Tiada data dikembalikan.');
@@ -99,6 +100,7 @@ export async function addQuestionToSupabase(
       order: qData.order ?? order,
       choices: (cData || []).map((c: any) => ({ id: c.id, question_id: c.question_id, option_text: c.option_text, is_correct: Boolean(c.is_correct) })),
       difficulty: difficulty as any,
+      image_url: qData.image_url || imageUrl || undefined,
     };
   } catch (e) {
     console.warn('Failed to add question to Supabase:', e);
@@ -111,7 +113,7 @@ export async function updateQuestionInSupabase(question: Question): Promise<bool
   try {
     const { error: qErr } = await supabase
       .from('questions')
-      .update({ section_id: question.section_id, question_text: question.question_text, explanation: question.explanation, order: question.order })
+      .update({ section_id: question.section_id, question_text: question.question_text, explanation: question.explanation, order: question.order, image_url: question.image_url || null })
       .eq('id', question.id);
     if (qErr) throw qErr;
 
@@ -146,12 +148,12 @@ export async function deleteQuestionFromSupabase(questionId: string): Promise<bo
 }
 
 export async function bulkAddQuestionsToSupabase(
-  items: { section_id: string; question_text: string; explanation: string; difficulty?: string; choices: { text: string; correct: boolean }[] }[]
+  items: { section_id: string; question_text: string; explanation: string; difficulty?: string; image_url?: string; choices: { text: string; correct: boolean }[] }[]
 ): Promise<Question[]> {
   if (!isSupabaseConfigured || !supabase) return [];
   const results: Question[] = [];
   for (const item of items) {
-    const q = await addQuestionToSupabase(item.section_id, item.question_text, item.explanation, item.choices, 1, item.difficulty);
+    const q = await addQuestionToSupabase(item.section_id, item.question_text, item.explanation, item.choices, 1, item.difficulty, item.image_url);
     if (q) results.push(q);
   }
   return results;
@@ -904,6 +906,7 @@ export async function fetchExamDataFromSupabase(): Promise<{
         order: q.order ?? 1,
         choices: choicesMap.get(q.id) || [],
         difficulty: q.difficulty || undefined,
+        image_url: q.image_url || undefined,
       }));
     }
 
