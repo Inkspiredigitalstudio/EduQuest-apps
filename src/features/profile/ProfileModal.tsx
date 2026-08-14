@@ -288,12 +288,28 @@ export const ProfileModal: React.FC<ProfileModalProps> = ({ isOpen, user, progre
                     <span className="font-mono font-bold text-ink-900">{user.login_id}</span>
                   </div>
                   <div className="flex justify-between py-1 border-b border-sand-200 text-ink-700">
-                    <span className="text-ink-500">Peringkat Sekolah</span>
-                    <span className="font-bold text-ink-900">SPPI / SMKA (Tingkatan 4 &amp; 5)</span>
+                    <span className="text-ink-500">No. Telefon</span>
+                    <span className="font-bold text-ink-900">{user.phone || 'Belum ditetapkan'}</span>
+                  </div>
+                  <div className="flex justify-between py-1 border-b border-sand-200 text-ink-700">
+                    <span className="text-ink-500">Emel</span>
+                    <span className="font-bold text-ink-900 truncate max-w-[60%] text-right">{user.contact_email || 'Belum ditetapkan'}</span>
+                  </div>
+                  <div className="flex justify-between py-1 border-b border-sand-200 text-ink-700">
+                    <span className="text-ink-500">Peringkat</span>
+                    <span className="font-bold text-ink-900">
+                      {user.school_level === 'rendah' && user.school_year
+                        ? `Sekolah Rendah — Tahun ${user.school_year}`
+                        : user.school_level === 'menengah' && user.school_form
+                        ? `Sekolah Menengah — Tingkatan ${user.school_form}`
+                        : 'Belum ditetapkan'}
+                    </span>
                   </div>
                   <div className="flex justify-between py-1 text-ink-700">
                     <span className="text-ink-500">Status Peranan</span>
-                    <span className="font-bold text-sage-600 bg-sage-100 px-2 py-0.5 rounded-full">Pelajar Aktif</span>
+                    <span className="font-bold text-sage-600 bg-sage-100 px-2 py-0.5 rounded-full">
+                      {user.role === 'parent' ? 'Ibu Bapa' : user.role === 'admin' ? 'Admin' : 'Pelajar Aktif'}
+                    </span>
                   </div>
                 </div>
               </div>
