@@ -2,7 +2,7 @@ import React, { useState } from 'react';
 import { registerUser, loginUser } from '../../lib/supabase';
 import { UserProfile } from '../../types';
 import { soundManager } from '../../lib/audio';
-import { User, Lock, Phone, Sparkles, Key, CheckCircle2, Copy, AlertCircle, ArrowRight, X, GraduationCap, Heart, RefreshCw, HelpCircle, Send, ArrowLeft } from 'lucide-react';
+import { User, Lock, Phone, Sparkles, Key, CheckCircle2, Copy, AlertCircle, ArrowRight, X, GraduationCap, Heart, RefreshCw, HelpCircle, Send, ArrowLeft, Mail, School } from 'lucide-react';
 
 // Admin support inbox for "Forgot Password" requests. Change this to the real
 // admin email address before going live.
@@ -21,6 +21,10 @@ export const AuthModal: React.FC<AuthModalProps> = ({ isOpen, onClose, onSuccess
   const [password, setPassword] = useState('');
   const [phone, setPhone] = useState('');
   const [role, setRole] = useState<'student' | 'parent'>('student');
+  const [contactEmail, setContactEmail] = useState('');
+  const [schoolLevel, setSchoolLevel] = useState<'rendah' | 'menengah' | ''>('');
+  const [schoolYear, setSchoolYear] = useState<number | ''>('');
+  const [schoolForm, setSchoolForm] = useState<number | ''>('');
 
   const [loginIdInput, setLoginIdInput] = useState('');
   const [errorMsg, setErrorMsg] = useState('');
@@ -60,7 +64,21 @@ export const AuthModal: React.FC<AuthModalProps> = ({ isOpen, onClose, onSuccess
     setLoading(true);
     soundManager.playClick();
 
-    const res = await registerUser(displayName.trim(), password, role, phone.trim(), customUsername.trim());
+    const res = await registerUser(
+      displayName.trim(),
+      password,
+      role,
+      phone.trim(),
+      customUsername.trim(),
+      role === 'student' && schoolLevel
+        ? {
+            level: schoolLevel,
+            year: schoolLevel === 'rendah' && schoolYear ? Number(schoolYear) : undefined,
+            form: schoolLevel === 'menengah' && schoolForm ? Number(schoolForm) : undefined,
+          }
+        : undefined,
+      contactEmail.trim() || undefined
+    );
     setLoading(false);
 
     if (res.error) {
@@ -318,6 +336,20 @@ export const AuthModal: React.FC<AuthModalProps> = ({ isOpen, onClose, onSuccess
                 </div>
 
                 <div>
+                  <label className="block text-xs font-bold text-ink-700 mb-1.5">Emel (Pilihan)</label>
+                  <div className="relative">
+                    <Mail className="w-4 h-4 text-ink-300 absolute left-3.5 top-3.5" />
+                    <input
+                      type="email"
+                      value={contactEmail}
+                      onChange={(e) => setContactEmail(e.target.value)}
+                      placeholder="Contoh: nama@email.com"
+                      className="w-full bg-cream-50 border border-sand-300 focus:border-mist-400 text-ink-900 text-sm rounded-xl pl-10 pr-4 py-3 outline-none transition-colors"
+                    />
+                  </div>
+                </div>
+
+                <div>
                   <label className="block text-xs font-bold text-ink-700 mb-2">Pilih Peranan Akaun</label>
                   <div className="grid grid-cols-2 gap-2.5">
                     <button
@@ -359,6 +391,97 @@ export const AuthModal: React.FC<AuthModalProps> = ({ isOpen, onClose, onSuccess
                     </button>
                   </div>
                 </div>
+
+                {role === 'student' && (
+                  <div className="space-y-3 p-3.5 bg-mist-50 border border-mist-200 rounded-2xl">
+                    <label className="block text-xs font-bold text-ink-700 flex items-center gap-1.5">
+                      <School className="w-3.5 h-3.5 text-mist-500" />
+                      <span>Peringkat Persekolahan (Pilihan)</span>
+                    </label>
+                    <div className="grid grid-cols-2 gap-2.5">
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setSchoolLevel('rendah');
+                          setSchoolForm('');
+                          soundManager.playClick();
+                        }}
+                        className={`py-2.5 rounded-xl border-2 text-xs font-bold transition-colors ${
+                          schoolLevel === 'rendah'
+                            ? 'bg-mist-100 border-mist-400 text-ink-900'
+                            : 'bg-cream-50 border-sand-200 text-ink-500 hover:border-sand-300'
+                        }`}
+                      >
+                        Sekolah Rendah
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setSchoolLevel('menengah');
+                          setSchoolYear('');
+                          soundManager.playClick();
+                        }}
+                        className={`py-2.5 rounded-xl border-2 text-xs font-bold transition-colors ${
+                          schoolLevel === 'menengah'
+                            ? 'bg-mist-100 border-mist-400 text-ink-900'
+                            : 'bg-cream-50 border-sand-200 text-ink-500 hover:border-sand-300'
+                        }`}
+                      >
+                        Sekolah Menengah
+                      </button>
+                    </div>
+
+                    {schoolLevel === 'rendah' && (
+                      <div>
+                        <label className="block text-[11px] font-bold text-ink-500 mb-1.5">Tahun</label>
+                        <div className="grid grid-cols-6 gap-1.5">
+                          {[1, 2, 3, 4, 5, 6].map((y) => (
+                            <button
+                              key={y}
+                              type="button"
+                              onClick={() => {
+                                setSchoolYear(y);
+                                soundManager.playClick();
+                              }}
+                              className={`py-2 rounded-lg border text-xs font-bold transition-colors ${
+                                schoolYear === y
+                                  ? 'bg-mist-500 border-mist-500 text-white'
+                                  : 'bg-cream-50 border-sand-200 text-ink-500 hover:border-sand-300'
+                              }`}
+                            >
+                              {y}
+                            </button>
+                          ))}
+                        </div>
+                      </div>
+                    )}
+
+                    {schoolLevel === 'menengah' && (
+                      <div>
+                        <label className="block text-[11px] font-bold text-ink-500 mb-1.5">Tingkatan</label>
+                        <div className="grid grid-cols-5 gap-1.5">
+                          {[1, 2, 3, 4, 5].map((f) => (
+                            <button
+                              key={f}
+                              type="button"
+                              onClick={() => {
+                                setSchoolForm(f);
+                                soundManager.playClick();
+                              }}
+                              className={`py-2 rounded-lg border text-xs font-bold transition-colors ${
+                                schoolForm === f
+                                  ? 'bg-mist-500 border-mist-500 text-white'
+                                  : 'bg-cream-50 border-sand-200 text-ink-500 hover:border-sand-300'
+                              }`}
+                            >
+                              {f}
+                            </button>
+                          ))}
+                        </div>
+                      </div>
+                    )}
+                  </div>
+                )}
 
                 <button
                   type="submit"
