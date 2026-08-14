@@ -25,6 +25,12 @@ const TOPIC_ICONS: Record<string, string> = {
 const QUESTION_TIME_LIMIT = 15;
 const POLL_INTERVAL_MS = 2500;
 
+const BATTLE_LEVELS = [
+  { level: 1, questionCount: 10 },
+  { level: 2, questionCount: 20 },
+  { level: 3, questionCount: 30 },
+] as const;
+
 export const BattleLobbyModal: React.FC<BattleLobbyModalProps> = ({
   isOpen,
   user,
@@ -43,6 +49,9 @@ export const BattleLobbyModal: React.FC<BattleLobbyModalProps> = ({
   const [creatingOrJoining, setCreatingOrJoining] = useState(false);
 
   const [selectedTopic, setSelectedTopic] = useState<string>('all');
+  const [selectedLevel, setSelectedLevel] = useState<1 | 2 | 3>(1);
+  const [roomIsLocalOnly, setRoomIsLocalOnly] = useState(false);
+  const questionCount = BATTLE_LEVELS.find((l) => l.level === selectedLevel)?.questionCount ?? 10;
 
   const topics = [
     { id: 'all', name: 'Semua Tajuk', icon: '🌟' },
@@ -79,6 +88,8 @@ export const BattleLobbyModal: React.FC<BattleLobbyModalProps> = ({
       setIsTimeout(false);
       setTimeLeft(QUESTION_TIME_LIMIT);
       setSelectedTopic('all');
+      setSelectedLevel(1);
+      setRoomIsLocalOnly(false);
     }
   }, [isOpen]);
 
@@ -143,11 +154,20 @@ export const BattleLobbyModal: React.FC<BattleLobbyModalProps> = ({
       setErrorMsg('Tiada soalan ditemui untuk tajuk ini. Sila pilih tajuk lain.');
       return;
     }
+    const notEnoughMsg = filtered.length < questionCount
+      ? `Nota: tajuk ini cuma ada ${filtered.length} soalan (Level ${selectedLevel} perlukan ${questionCount}) — bilik akan guna ${filtered.length} soalan sahaja.`
+      : '';
 
     setCreatingOrJoining(true);
-    const room = await createBattleRoom(user, filtered);
+    const { room, isLocalOnly } = await createBattleRoom(user, filtered, questionCount);
     setCreatingOrJoining(false);
     setActiveRoom(room);
+    setRoomIsLocalOnly(isLocalOnly);
+
+    const localOnlyMsg = isLocalOnly
+      ? 'Amaran: sambungan pelayan bermasalah, bilik ini dicipta dalam mod luar talian. Rakan di peranti lain mungkin tidak dapat sertai — cuba cipta semula sebentar lagi.'
+      : '';
+    setErrorMsg([notEnoughMsg, localOnlyMsg].filter(Boolean).join(' '));
   };
 
   const handleJoinRoom = async () => {
@@ -180,20 +200,37 @@ export const BattleLobbyModal: React.FC<BattleLobbyModalProps> = ({
     });
   };
 
-  const handleStartBattle = () => {
+  const handleStartBattle = async () => {
     if (!activeRoom) return;
     soundManager.playLevelUp();
 
     // Both players must answer the exact same questions — pulled from the
     // shared room record (set once, by whoever created the room) rather than
     // re-randomized locally per player.
-    const sharedIds = activeRoom.question_ids || [];
-    const matched = sharedIds
-      .map((id) => questions.find((q) => q.id === id))
-      .filter((q): q is Question => Boolean(q));
+    const matchAgainstLocal = (ids: string[]) =>
+      ids.map((id) => questions.find((q) => q.id === id)).filter((q): q is Question => Boolean(q));
+
+    let sharedIds = activeRoom.question_ids || [];
+    let matched = matchAgainstLocal(sharedIds);
+
+    // If the room's local copy has no questions yet (e.g. this player's client
+    // hasn't polled since the room was created), re-check the live record once
+    // before giving up — this is the most common cause of a false "not found".
+    if (matched.length === 0) {
+      const fresh = await getBattleRoomState(activeRoom.id);
+      if (fresh) {
+        setActiveRoom(fresh);
+        sharedIds = fresh.question_ids || [];
+        matched = matchAgainstLocal(sharedIds);
+      }
+    }
 
     if (matched.length === 0) {
-      setErrorMsg('Soalan battle untuk bilik ini tidak dijumpai. Cuba cipta bilik baru.');
+      setErrorMsg(
+        sharedIds.length === 0
+          ? 'Bilik ini tiada soalan direkodkan — kemungkinan sambungan terganggu semasa bilik dicipta. Sila tutup dan cipta bilik baru.'
+          : 'Soalan bilik ini tidak sepadan dengan bank soalan pada peranti ini (mungkin bank soalan dikemaskini selepas bilik dicipta). Sila cipta bilik baru.'
+      );
       return;
     }
 
@@ -268,7 +305,7 @@ export const BattleLobbyModal: React.FC<BattleLobbyModalProps> = ({
             </div>
             <div>
               <h2 className="text-xl font-display font-bold text-ink-900">Battle 1v1 Sebenar</h2>
-              <p className="text-xs text-ink-500">10 Soalan • Lawan Rakan Sebenar • Cabaran Masa!</p>
+              <p className="text-xs text-ink-500">{activeRoom ? activeRoom.question_ids?.length ?? questionCount : questionCount} Soalan • Lawan Rakan Sebenar • Cabaran Masa!</p>
             </div>
           </div>
 
@@ -283,8 +320,40 @@ export const BattleLobbyModal: React.FC<BattleLobbyModalProps> = ({
             {!activeRoom && (
               <div className="space-y-2">
                 <label className="text-xs font-bold text-ink-700 uppercase tracking-wide flex items-center gap-1.5">
+                  <Swords className="w-3.5 h-3.5 text-honey-500" />
+                  <span>Pilih Level Battle</span>
+                </label>
+
+                <div className="grid grid-cols-3 gap-2">
+                  {BATTLE_LEVELS.map(({ level, questionCount: lvlCount }) => {
+                    const isSelected = selectedLevel === level;
+                    return (
+                      <button
+                        key={level}
+                        type="button"
+                        onClick={() => {
+                          soundManager.playClick();
+                          setSelectedLevel(level);
+                          setErrorMsg('');
+                        }}
+                        className={`p-2.5 rounded-xl border text-xs font-bold transition-colors flex flex-col items-center gap-0.5 ${
+                          isSelected ? 'bg-honey-100 border-honey-400 text-honey-500' : 'bg-cream-100 border-sand-200 text-ink-500 hover:border-sand-300'
+                        }`}
+                      >
+                        <span>Level {level}</span>
+                        <span className="text-[10px] font-normal opacity-80">{lvlCount} Soalan</span>
+                      </button>
+                    );
+                  })}
+                </div>
+              </div>
+            )}
+
+            {!activeRoom && (
+              <div className="space-y-2">
+                <label className="text-xs font-bold text-ink-700 uppercase tracking-wide flex items-center gap-1.5">
                   <BookOpen className="w-3.5 h-3.5 text-honey-500" />
-                  <span>Pilih Tajuk Soalan Battle (10 Soalan)</span>
+                  <span>Pilih Tajuk Soalan Battle ({questionCount} Soalan)</span>
                 </label>
 
                 <div className="grid grid-cols-2 sm:grid-cols-3 gap-2">
@@ -384,7 +453,7 @@ export const BattleLobbyModal: React.FC<BattleLobbyModalProps> = ({
                   className="w-full py-3.5 bg-sage-500 hover:bg-sage-600 text-white font-bold rounded-2xl text-sm transition-colors flex items-center justify-center gap-2"
                 >
                   <Play className="w-5 h-5 fill-white" />
-                  <span>{activeRoom.guest_name ? 'Mula Cabaran Battle 10 Soalan!' : 'Mula Latihan Solo (Tanpa Tunggu)'}</span>
+                  <span>{activeRoom.guest_name ? `Mula Cabaran Battle ${activeRoom.question_ids?.length ?? questionCount} Soalan!` : 'Mula Latihan Solo (Tanpa Tunggu)'}</span>
                 </button>
               </div>
             )}
