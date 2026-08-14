@@ -41,7 +41,11 @@ CREATE TABLE IF NOT EXISTS public.users (
   coin INTEGER DEFAULT 100,
   xp INTEGER DEFAULT 0,
   level INTEGER DEFAULT 1,
-  created_at TIMESTAMPTZ DEFAULT NOW()
+  created_at TIMESTAMPTZ DEFAULT NOW(),
+  school_level TEXT,
+  school_year INTEGER,
+  school_form INTEGER,
+  contact_email TEXT
 );
 
 -- 2. Create Subjects Table
