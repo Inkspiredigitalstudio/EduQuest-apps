@@ -250,7 +250,9 @@ export async function registerUser(
   password: string,
   role: 'student' | 'parent' = 'student',
   phone?: string,
-  customUsername?: string
+  customUsername?: string,
+  schoolInfo?: { level?: 'rendah' | 'menengah'; year?: number; form?: number },
+  contactEmail?: string
 ): Promise<{
   profile: UserProfile;
   loginId: string;
@@ -301,6 +303,10 @@ export async function registerUser(
           streak_days: 1,
           role,
           invite_code: inviteCode,
+          school_level: schoolInfo?.level,
+          school_year: schoolInfo?.level === 'rendah' ? schoolInfo?.year : undefined,
+          school_form: schoolInfo?.level === 'menengah' ? schoolInfo?.form : undefined,
+          contact_email: contactEmail || undefined,
         };
 
         // Ensure user row exists in public.users
@@ -316,6 +322,10 @@ export async function registerUser(
             role,
             invite_code: inviteCode,
             created_at: userProfile.created_at,
+            school_level: userProfile.school_level || null,
+            school_year: userProfile.school_year ?? null,
+            school_form: userProfile.school_form ?? null,
+            contact_email: userProfile.contact_email || null,
           };
           const { error: upsertErr } = await supabase.from('users').upsert([dbUserPayload]);
           if (upsertErr) {
@@ -355,6 +365,10 @@ export async function registerUser(
     role,
     invite_code: inviteCode,
     password,
+    school_level: schoolInfo?.level,
+    school_year: schoolInfo?.level === 'rendah' ? schoolInfo?.year : undefined,
+    school_form: schoolInfo?.level === 'menengah' ? schoolInfo?.form : undefined,
+    contact_email: contactEmail || undefined,
   };
 
   existingUsers.push(localProfile);
@@ -405,6 +419,10 @@ export async function loginUser(loginIdInput: string, passwordInput: string): Pr
           streak_days: 1,
           role: dbUser?.role || authData?.user?.user_metadata?.role || 'student',
           invite_code: dbUser?.invite_code || generateInviteCode(),
+          school_level: dbUser?.school_level || undefined,
+          school_year: dbUser?.school_year ?? undefined,
+          school_form: dbUser?.school_form ?? undefined,
+          contact_email: dbUser?.contact_email || undefined,
         };
 
         // Sync to public.users if not present
@@ -512,6 +530,10 @@ export async function getAllRegisteredUsers(): Promise<UserProfile[]> {
             created_at: row.created_at,
             role: row.role,
             invite_code: row.invite_code,
+            school_level: row.school_level || undefined,
+            school_year: row.school_year ?? undefined,
+            school_form: row.school_form ?? undefined,
+            contact_email: row.contact_email || undefined,
           });
         });
         return Array.from(merged.values()).sort((a, b) => a.name.localeCompare(b.name));
@@ -522,6 +544,52 @@ export async function getAllRegisteredUsers(): Promise<UserProfile[]> {
   }
 
   return [...localUsers].sort((a, b) => a.name.localeCompare(b.name));
+}
+
+// ---------------- LEADERBOARD ----------------
+// Deliberately Supabase-only — no merge with local-storage users. The ranking
+// must reflect real, current accounts; a local-only entry (e.g. a stale test
+// account from a device that hasn't synced) would show a wrong coin count and
+// throw the ordering off, which is exactly the bug this was pulled out to fix.
+export interface LeaderboardEntry {
+  id: string;
+  name: string;
+  login_id: string;
+  coin: number;
+  xp: number;
+  level: number;
+  school_name?: string;
+}
+
+export async function getLeaderboard(): Promise<LeaderboardEntry[]> {
+  if (!isSupabaseConfigured || !supabase) return [];
+
+  try {
+    const { data, error } = await supabase
+      .from('users')
+      .select('id, name, login_id, coin, xp, level, school_name, role');
+
+    if (error || !data) {
+      console.warn('Supabase leaderboard fetch failed:', error);
+      return [];
+    }
+
+    return data
+      .filter((row: any) => row.role !== 'admin')
+      .map((row: any) => ({
+        id: row.id,
+        name: row.name,
+        login_id: row.login_id,
+        coin: row.coin ?? 0,
+        xp: row.xp ?? 0,
+        level: row.level ?? 1,
+        school_name: row.school_name || undefined,
+      }))
+      .sort((a, b) => b.coin - a.coin);
+  } catch (e) {
+    console.warn('Supabase leaderboard fetch threw:', e);
+    return [];
+  }
 }
 
 // Resets a user's password. Local-storage accounts: generates a new simple PIN,
@@ -1115,12 +1183,22 @@ function mapDbRoom(row: any): BattleRoom {
   };
 }
 
-export async function createBattleRoom(host: UserProfile, questionPool: Question[] = []): Promise<BattleRoom> {
+export async function createBattleRoom(
+  host: UserProfile,
+  questionPool: Question[] = [],
+  questionCount: number = 10
+): Promise<{ room: BattleRoom; isLocalOnly: boolean }> {
   const code = 'BTL-' + Math.floor(1000 + Math.random() * 9000);
-  const questionIds = [...questionPool].sort(() => 0.5 - Math.random()).slice(0, 10).map((q) => q.id);
+  // Use a real UUID for the shared row's id — a locally-invented string like
+  // `room-${Date.now()}` gets silently rejected by a `uuid` id column (insert
+  // throws, we fall back to local-only, and the room never becomes visible to
+  // a guest on another device even though the host sees no error). A proper
+  // UUID satisfies both a `uuid` column and a `text` column, so this works
+  // either way. See chat notes on the Battle Room join bug.
+  const questionIds = [...questionPool].sort(() => 0.5 - Math.random()).slice(0, questionCount).map((q) => q.id);
 
   const room: BattleRoom = {
-    id: `room-${Date.now()}`,
+    id: crypto.randomUUID(),
     code,
     host_id: host.id,
     host_name: host.name,
@@ -1147,7 +1225,7 @@ export async function createBattleRoom(host: UserProfile, questionPool: Question
         host_finished: false,
         guest_finished: false,
       });
-      if (!error) return room;
+      if (!error) return { room, isLocalOnly: false };
       console.warn('Supabase battle room insert failed, using local fallback:', error);
     } catch (e) {
       console.warn('Supabase battle room insert threw, using local fallback:', e);
@@ -1157,7 +1235,7 @@ export async function createBattleRoom(host: UserProfile, questionPool: Question
   const rooms = getBattleRooms();
   rooms.push(room);
   localStorage.setItem(LOCAL_BATTLE_ROOMS_KEY, JSON.stringify(rooms));
-  return room;
+  return { room, isLocalOnly: true };
 }
 
 export async function joinBattleRoom(code: string, guest: UserProfile): Promise<BattleRoom | null> {
