@@ -558,7 +558,6 @@ export interface LeaderboardEntry {
   coin: number;
   xp: number;
   level: number;
-  school_name?: string;
 }
 
 export async function getLeaderboard(): Promise<LeaderboardEntry[]> {
@@ -567,7 +566,7 @@ export async function getLeaderboard(): Promise<LeaderboardEntry[]> {
   try {
     const { data, error } = await supabase
       .from('users')
-      .select('id, name, login_id, coin, xp, level, school_name, role');
+      .select('id, name, login_id, coin, xp, level, role');
 
     if (error || !data) {
       console.warn('Supabase leaderboard fetch failed:', error);
@@ -583,7 +582,6 @@ export async function getLeaderboard(): Promise<LeaderboardEntry[]> {
         coin: row.coin ?? 0,
         xp: row.xp ?? 0,
         level: row.level ?? 1,
-        school_name: row.school_name || undefined,
       }))
       // Ranked by XP (matches the "XP" figure shown next to each entry in the
       // UI, and matches Tahap/level which is derived from xp too). Previously
