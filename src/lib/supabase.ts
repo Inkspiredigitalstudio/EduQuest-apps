@@ -524,6 +524,52 @@ export async function getAllRegisteredUsers(): Promise<UserProfile[]> {
   return [...localUsers].sort((a, b) => a.name.localeCompare(b.name));
 }
 
+// ---------------- LEADERBOARD ----------------
+// Deliberately Supabase-only — no merge with local-storage users. The ranking
+// must reflect real, current accounts; a local-only entry (e.g. a stale test
+// account from a device that hasn't synced) would show a wrong coin count and
+// throw the ordering off, which is exactly the bug this was pulled out to fix.
+export interface LeaderboardEntry {
+  id: string;
+  name: string;
+  login_id: string;
+  coin: number;
+  xp: number;
+  level: number;
+}
+
+export async function getLeaderboard(): Promise<LeaderboardEntry[]> {
+  if (!isSupabaseConfigured || !supabase) return [];
+
+  try {
+    const { data, error } = await supabase
+      .from('users')
+      .select('id, name, login_id, coin, xp, level, role');
+
+    if (error || !data) {
+      console.warn('Supabase leaderboard fetch failed:', error);
+      return [];
+    }
+
+    return data
+      .filter((row: any) => row.role !== 'admin')
+      .map((row: any) => ({
+        id: row.id,
+        name: row.name,
+        login_id: row.login_id,
+        coin: row.coin ?? 0,
+        xp: row.xp ?? 0,
+        level: row.level ?? 1,
+      }))
+      // Ranked by XP (matches the "XP" figure shown next to each entry in the
+      // UI, and matches Tahap/level which is derived from xp too).
+      .sort((a, b) => b.xp - a.xp);
+  } catch (e) {
+    console.warn('Supabase leaderboard fetch threw:', e);
+    return [];
+  }
+}
+
 // Resets a user's password. Local-storage accounts: generates a new simple PIN,
 // stores it directly (this app's local-mode security model is intentionally
 // lightweight — see chat notes). Supabase-auth accounts can't safely have their
