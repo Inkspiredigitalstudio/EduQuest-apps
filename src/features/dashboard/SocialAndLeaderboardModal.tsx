@@ -1,8 +1,8 @@
 import React, { useState, useEffect } from 'react';
 import { UserProfile, FriendRequest } from '../../types';
-import { getFriendRequests, sendFriendRequest, respondFriendRequest, getLevelTitle } from '../../lib/supabase';
+import { getFriendRequests, sendFriendRequest, respondFriendRequest, getLevelTitle, getLeaderboard, LeaderboardEntry } from '../../lib/supabase';
 import { soundManager } from '../../lib/audio';
-import { Users, Trophy, UserPlus, Check, X, Search, Sparkles, School, Crown, Copy, CheckCircle2 } from 'lucide-react';
+import { Users, Trophy, UserPlus, Check, X, Search, Sparkles, Crown, Copy, CheckCircle2 } from 'lucide-react';
 
 interface SocialAndLeaderboardModalProps {
   isOpen: boolean;
@@ -12,7 +12,10 @@ interface SocialAndLeaderboardModalProps {
 
 export const SocialAndLeaderboardModal: React.FC<SocialAndLeaderboardModalProps> = ({ isOpen, user, onClose }) => {
   const [activeTab, setActiveTab] = useState<'leaderboard' | 'friends'>('leaderboard');
-  const [leaderboardFilter, setLeaderboardFilter] = useState<'global' | 'school' | 'friends'>('global');
+  const [leaderboardFilter, setLeaderboardFilter] = useState<'global' | 'friends'>('global');
+
+  const [leaderboard, setLeaderboard] = useState<LeaderboardEntry[]>([]);
+  const [leaderboardLoading, setLeaderboardLoading] = useState(false);
 
   const [friendInput, setFriendInput] = useState('');
   const [requestMsg, setRequestMsg] = useState<{ type: 'success' | 'error'; text: string } | null>(null);
@@ -24,8 +27,18 @@ export const SocialAndLeaderboardModal: React.FC<SocialAndLeaderboardModalProps>
     setFriendRequests(all);
   };
 
+  const loadLeaderboard = async () => {
+    setLeaderboardLoading(true);
+    const data = await getLeaderboard();
+    setLeaderboard(data);
+    setLeaderboardLoading(false);
+  };
+
   useEffect(() => {
-    if (isOpen) loadRequests();
+    if (isOpen) {
+      loadRequests();
+      loadLeaderboard();
+    }
   }, [isOpen, user.id]);
 
   if (!isOpen) return null;
@@ -39,6 +52,9 @@ export const SocialAndLeaderboardModal: React.FC<SocialAndLeaderboardModalProps>
 
   const incomingReqs = friendRequests.filter((r) => r.receiver_id === user.id && r.status === 'pending');
   const acceptedFriends = friendRequests.filter((r) => (r.sender_id === user.id || r.receiver_id === user.id) && r.status === 'accepted');
+  const friendIds = new Set(
+    acceptedFriends.map((f) => (f.sender_id === user.id ? f.receiver_id : f.sender_id))
+  );
 
   const handleSendFriendReq = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -69,13 +85,13 @@ export const SocialAndLeaderboardModal: React.FC<SocialAndLeaderboardModalProps>
     loadRequests();
   };
 
-  const sampleLeaderboard = [
-    { rank: 1, name: 'Ahmad Zaki', xp: 1850, level: 7, school: 'SMKA Kuala Lumpur' },
-    { rank: 2, name: 'Nur Maryam', xp: 1620, level: 6, school: 'SMKA Maahad Hamidiah' },
-    { rank: 3, name: user.name, xp: user.xp, level: user.level, school: user.school_name || 'SMKA Simpang Empat' },
-    { rank: 4, name: 'Muhammad Ali', xp: 920, level: 4, school: 'SPPI Selangor' },
-    { rank: 5, name: 'Siti Sarah', xp: 750, level: 4, school: 'SMKA Tok Jiring' },
-  ];
+  // Real data only — leaderboard is already sorted by xp (desc) by getLeaderboard().
+  // "Rakan-Rakan" narrows the same real list down to your accepted friends + yourself,
+  // rather than filtering fake placeholder rows.
+  const displayedLeaderboard =
+    leaderboardFilter === 'friends'
+      ? leaderboard.filter((entry) => entry.id === user.id || friendIds.has(entry.id))
+      : leaderboard;
 
   const filterBtnCls = (active: boolean) =>
     `px-3.5 py-1.5 rounded-xl text-xs font-bold transition-colors flex items-center gap-1.5 ${
@@ -92,7 +108,7 @@ export const SocialAndLeaderboardModal: React.FC<SocialAndLeaderboardModalProps>
             </div>
             <div>
               <h2 className="text-xl font-display font-bold text-ink-900">Carta Kedudukan &amp; Rakan</h2>
-              <p className="text-xs text-ink-500">Papan Mata Global, Sekolah, dan Rangkaian Rakan EduQuest</p>
+              <p className="text-xs text-ink-500">Papan Mata Global dan Rangkaian Rakan EduQuest</p>
             </div>
           </div>
 
@@ -137,53 +153,60 @@ export const SocialAndLeaderboardModal: React.FC<SocialAndLeaderboardModalProps>
                 <Crown className="w-3.5 h-3.5" />
                 <span>Keseluruhan</span>
               </button>
-              <button onClick={() => setLeaderboardFilter('school')} className={filterBtnCls(leaderboardFilter === 'school')}>
-                <School className="w-3.5 h-3.5" />
-                <span>Mengikut Sekolah</span>
-              </button>
               <button onClick={() => setLeaderboardFilter('friends')} className={filterBtnCls(leaderboardFilter === 'friends')}>
                 <Users className="w-3.5 h-3.5" />
                 <span>Rakan-Rakan</span>
               </button>
             </div>
 
-            <div className="space-y-2">
-              {sampleLeaderboard.map((item) => {
-                const isMe = item.name === user.name;
-                const rankBadge =
-                  item.rank === 1 ? 'bg-honey-400 text-white' :
-                  item.rank === 2 ? 'bg-sand-300 text-ink-900' :
-                  item.rank === 3 ? 'bg-clay-400 text-white' : 'bg-cream-200 text-ink-500';
+            {leaderboardLoading ? (
+              <div className="p-6 text-center text-xs text-ink-500">Memuatkan carta kedudukan...</div>
+            ) : displayedLeaderboard.length === 0 ? (
+              <div className="p-4 bg-cream-100 border border-sand-200 rounded-2xl text-center text-xs text-ink-500">
+                {leaderboardFilter === 'friends'
+                  ? 'Belum ada rakan untuk dipaparkan di sini. Tambah rakan dahulu di tab sebelah.'
+                  : 'Belum ada data carta kedudukan buat masa ini.'}
+              </div>
+            ) : (
+              <div className="space-y-2">
+                {displayedLeaderboard.map((item, idx) => {
+                  const rank = idx + 1;
+                  const isMe = item.id === user.id;
+                  const rankBadge =
+                    rank === 1 ? 'bg-honey-400 text-white' :
+                    rank === 2 ? 'bg-sand-300 text-ink-900' :
+                    rank === 3 ? 'bg-clay-400 text-white' : 'bg-cream-200 text-ink-500';
 
-                return (
-                  <div
-                    key={item.rank}
-                    className={`p-3.5 rounded-2xl border transition-colors flex items-center justify-between gap-3 text-xs ${
-                      isMe ? 'bg-mist-100 border-mist-300' : 'bg-cream-100 border-sand-200'
-                    }`}
-                  >
-                    <div className="flex items-center gap-3">
-                      <div className={`w-8 h-8 rounded-xl font-bold flex items-center justify-center shrink-0 ${rankBadge}`}>
-                        #{item.rank}
+                  return (
+                    <div
+                      key={item.id}
+                      className={`p-3.5 rounded-2xl border transition-colors flex items-center justify-between gap-3 text-xs ${
+                        isMe ? 'bg-mist-100 border-mist-300' : 'bg-cream-100 border-sand-200'
+                      }`}
+                    >
+                      <div className="flex items-center gap-3">
+                        <div className={`w-8 h-8 rounded-xl font-bold flex items-center justify-center shrink-0 ${rankBadge}`}>
+                          #{rank}
+                        </div>
+
+                        <div>
+                          <span className="font-bold text-ink-900 block text-sm flex items-center gap-2">
+                            <span>{item.name}</span>
+                            {isMe && <span className="text-[10px] bg-mist-200 text-mist-700 px-2 py-0.5 rounded-full font-bold">Akaun Anda</span>}
+                          </span>
+                          <span className="text-[11px] text-ink-500">{getLevelTitle(item.level)}</span>
+                        </div>
                       </div>
 
-                      <div>
-                        <span className="font-bold text-ink-900 block text-sm flex items-center gap-2">
-                          <span>{item.name}</span>
-                          {isMe && <span className="text-[10px] bg-mist-200 text-mist-700 px-2 py-0.5 rounded-full font-bold">Akaun Anda</span>}
-                        </span>
-                        <span className="text-[11px] text-ink-500">{item.school} • {getLevelTitle(item.level)}</span>
+                      <div className="text-right shrink-0">
+                        <span className="text-sm font-bold text-honey-500 block">{item.xp} XP</span>
+                        <span className="text-[10px] text-ink-500 font-mono">Tahap {item.level}</span>
                       </div>
                     </div>
-
-                    <div className="text-right shrink-0">
-                      <span className="text-sm font-bold text-honey-500 block">{item.xp} XP</span>
-                      <span className="text-[10px] text-ink-500 font-mono">Tahap {item.level}</span>
-                    </div>
-                  </div>
-                );
-              })}
-            </div>
+                  );
+                })}
+              </div>
+            )}
           </div>
         ) : (
           <div className="space-y-5 overflow-y-auto flex-1 pr-1">
