@@ -1,6 +1,7 @@
 import React, { useState } from 'react';
 import { UserProfile, UserProgress } from '../../types';
 import { soundManager } from '../../lib/audio';
+import { updateUserPhone } from '../../lib/supabase';
 import {
   User,
   Trophy,
@@ -17,6 +18,7 @@ import {
   GraduationCap,
   School,
   Star,
+  Pencil,
 } from 'lucide-react';
 
 interface ProfileModalProps {
@@ -25,13 +27,32 @@ interface ProfileModalProps {
   progressList: UserProgress[];
   onClose: () => void;
   onLogout: () => void;
+  onUserUpdate?: (updated: UserProfile) => void;
 }
 
-export const ProfileModal: React.FC<ProfileModalProps> = ({ isOpen, user, progressList = [], onClose, onLogout }) => {
+export const ProfileModal: React.FC<ProfileModalProps> = ({ isOpen, user, progressList = [], onClose, onLogout, onUserUpdate }) => {
   const [copied, setCopied] = useState(false);
   const [activeTab, setActiveTab] = useState<'student' | 'parent'>('student');
+  const [editingPhone, setEditingPhone] = useState(false);
+  const [phoneInput, setPhoneInput] = useState(user.phone || '');
+  const [savingPhone, setSavingPhone] = useState(false);
+  const [phoneError, setPhoneError] = useState('');
 
   if (!isOpen) return null;
+
+  const handleSavePhone = async () => {
+    setSavingPhone(true);
+    setPhoneError('');
+    const result = await updateUserPhone(user.id, phoneInput);
+    setSavingPhone(false);
+    if (result.success) {
+      soundManager.playClick();
+      onUserUpdate?.({ ...user, phone: phoneInput.trim() || undefined });
+      setEditingPhone(false);
+    } else {
+      setPhoneError(result.error || 'Gagal simpan. Sila cuba lagi.');
+    }
+  };
 
   const safeProgressList = progressList || [];
 
@@ -63,7 +84,7 @@ export const ProfileModal: React.FC<ProfileModalProps> = ({ isOpen, user, progre
 
   const achievements = [
     { id: 'fiqh', title: 'Pencinta Fiqh', desc: 'Selesaikan soalan Subjek Fekah', icon: '📖', isUnlocked: progressList.some((p) => p.section_id.includes('fekah') || p.is_completed), color: 'from-honey-400 to-honey-500' },
-    { id: 'aqidah', title: 'Bintang Aqidah', desc: 'Selesaikan soalan Subjek Aqidah', icon: '🌟', isUnlocked: progressList.some((p) => p.section_id.includes('aqidah') || p.best_score > 0), color: 'from-mist-400 to-mist-500' },
+    { id: 'akidah', title: 'Bintang Akidah', desc: 'Selesaikan soalan Subjek Akidah', icon: '🌟', isUnlocked: progressList.some((p) => p.section_id.includes('akidah') || p.best_score > 0), color: 'from-mist-400 to-mist-500' },
     { id: 'akhlak', title: 'Wira Akhlak', desc: 'Tekun menjawab soalan Akhlak Islamiah', icon: '🛡️', isUnlocked: progressList.some((p) => p.section_id.includes('akhlak') || p.best_score > 0), color: 'from-sage-400 to-sage-500' },
     { id: 'streak', title: 'Pejuang Streak', desc: 'Kekal streak 3 hari berturut-turut', icon: '🔥', isUnlocked: (user.streak_days || 1) >= 3, color: 'from-clay-400 to-clay-500' },
     { id: 'coin', title: 'Pemburu Koin', desc: 'Kumpul sekurang-kurangnya 100 Koin', icon: '💰', isUnlocked: user.coin >= 100, color: 'from-honey-300 to-honey-400' },
@@ -287,9 +308,51 @@ export const ProfileModal: React.FC<ProfileModalProps> = ({ isOpen, user, progre
                     <span className="text-ink-500">ID Pengguna</span>
                     <span className="font-mono font-bold text-ink-900">{user.login_id}</span>
                   </div>
-                  <div className="flex justify-between py-1 border-b border-sand-200 text-ink-700">
-                    <span className="text-ink-500">No. Telefon</span>
-                    <span className="font-bold text-ink-900">{user.phone || 'Belum ditetapkan'}</span>
+                  <div className="py-1.5 border-b border-sand-200 text-ink-700">
+                    <div className="flex justify-between items-center">
+                      <span className="text-ink-500">No. Telefon</span>
+                      {!editingPhone && (
+                        <button
+                          onClick={() => {
+                            setPhoneInput(user.phone || '');
+                            setPhoneError('');
+                            setEditingPhone(true);
+                          }}
+                          className="flex items-center gap-1 text-ink-900"
+                        >
+                          <span className="font-bold">{user.phone || 'Belum ditetapkan'}</span>
+                          <Pencil className="w-3 h-3 text-ink-300" />
+                        </button>
+                      )}
+                    </div>
+                    {editingPhone && (
+                      <div className="mt-2 space-y-1.5">
+                        <div className="flex items-center gap-2">
+                          <input
+                            type="tel"
+                            value={phoneInput}
+                            onChange={(e) => setPhoneInput(e.target.value)}
+                            placeholder="Contoh: 0123456789"
+                            className="flex-1 bg-cream-100 border border-sand-300 focus:border-mist-400 text-ink-900 text-xs rounded-lg px-2.5 py-1.5 outline-none"
+                            autoFocus
+                          />
+                          <button
+                            onClick={handleSavePhone}
+                            disabled={savingPhone}
+                            className="px-2.5 py-1.5 bg-mist-500 hover:bg-mist-600 text-white text-xs font-bold rounded-lg disabled:opacity-60"
+                          >
+                            {savingPhone ? '...' : 'Simpan'}
+                          </button>
+                          <button
+                            onClick={() => { setEditingPhone(false); setPhoneError(''); }}
+                            className="px-2.5 py-1.5 bg-cream-100 hover:bg-cream-200 text-ink-500 text-xs font-bold rounded-lg"
+                          >
+                            Batal
+                          </button>
+                        </div>
+                        {phoneError && <p className="text-[10px] text-clay-500">{phoneError}</p>}
+                      </div>
+                    )}
                   </div>
                   <div className="flex justify-between py-1 border-b border-sand-200 text-ink-700">
                     <span className="text-ink-500">Emel</span>
@@ -344,7 +407,7 @@ export const ProfileModal: React.FC<ProfileModalProps> = ({ isOpen, user, progre
                     Pelajar ini mengekalkan streak latihan soalan selama <strong className="text-clay-500">{user.streak_days || 1} hari berturut-turut</strong>.
                   </p>
                   <p>
-                    Gunakan <strong>Kod Jemputan: {inviteCode}</strong> di Portal Ibu Bapa untuk memantau analisis pencapaian secara terperinci mengikut subjek Fekah, Aqidah &amp; Akhlak.
+                    Gunakan <strong>Kod Jemputan: {inviteCode}</strong> di Portal Ibu Bapa untuk memantau analisis pencapaian secara terperinci mengikut subjek Fekah, Akidah &amp; Akhlak.
                   </p>
                 </div>
               </div>
