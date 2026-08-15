@@ -441,6 +441,7 @@ export default function App() {
             setView('dashboard');
           }}
           onLogout={handleLogout}
+          onUserUpdate={(updated) => setUser(updated)}
         />
       )}
 
