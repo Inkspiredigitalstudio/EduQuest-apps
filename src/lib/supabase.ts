@@ -250,7 +250,9 @@ export async function registerUser(
   password: string,
   role: 'student' | 'parent' = 'student',
   phone?: string,
-  customUsername?: string
+  customUsername?: string,
+  schoolInfo?: { level?: 'rendah' | 'menengah'; year?: number; form?: number },
+  contactEmail?: string
 ): Promise<{
   profile: UserProfile;
   loginId: string;
@@ -301,6 +303,10 @@ export async function registerUser(
           streak_days: 1,
           role,
           invite_code: inviteCode,
+          school_level: schoolInfo?.level,
+          school_year: schoolInfo?.level === 'rendah' ? schoolInfo?.year : undefined,
+          school_form: schoolInfo?.level === 'menengah' ? schoolInfo?.form : undefined,
+          contact_email: contactEmail || undefined,
         };
 
         // Ensure user row exists in public.users
@@ -316,6 +322,10 @@ export async function registerUser(
             role,
             invite_code: inviteCode,
             created_at: userProfile.created_at,
+            school_level: userProfile.school_level || null,
+            school_year: userProfile.school_year ?? null,
+            school_form: userProfile.school_form ?? null,
+            contact_email: userProfile.contact_email || null,
           };
           const { error: upsertErr } = await supabase.from('users').upsert([dbUserPayload]);
           if (upsertErr) {
@@ -355,6 +365,10 @@ export async function registerUser(
     role,
     invite_code: inviteCode,
     password,
+    school_level: schoolInfo?.level,
+    school_year: schoolInfo?.level === 'rendah' ? schoolInfo?.year : undefined,
+    school_form: schoolInfo?.level === 'menengah' ? schoolInfo?.form : undefined,
+    contact_email: contactEmail || undefined,
   };
 
   existingUsers.push(localProfile);
@@ -405,6 +419,10 @@ export async function loginUser(loginIdInput: string, passwordInput: string): Pr
           streak_days: 1,
           role: dbUser?.role || authData?.user?.user_metadata?.role || 'student',
           invite_code: dbUser?.invite_code || generateInviteCode(),
+          school_level: dbUser?.school_level || undefined,
+          school_year: dbUser?.school_year ?? undefined,
+          school_form: dbUser?.school_form ?? undefined,
+          contact_email: dbUser?.contact_email || undefined,
         };
 
         // Sync to public.users if not present
@@ -512,6 +530,10 @@ export async function getAllRegisteredUsers(): Promise<UserProfile[]> {
             created_at: row.created_at,
             role: row.role,
             invite_code: row.invite_code,
+            school_level: row.school_level || undefined,
+            school_year: row.school_year ?? undefined,
+            school_form: row.school_form ?? undefined,
+            contact_email: row.contact_email || undefined,
           });
         });
         return Array.from(merged.values()).sort((a, b) => a.name.localeCompare(b.name));
@@ -536,6 +558,7 @@ export interface LeaderboardEntry {
   coin: number;
   xp: number;
   level: number;
+  school_name?: string;
 }
 
 export async function getLeaderboard(): Promise<LeaderboardEntry[]> {
@@ -544,7 +567,7 @@ export async function getLeaderboard(): Promise<LeaderboardEntry[]> {
   try {
     const { data, error } = await supabase
       .from('users')
-      .select('id, name, login_id, coin, xp, level, role');
+      .select('id, name, login_id, coin, xp, level, school_name, role');
 
     if (error || !data) {
       console.warn('Supabase leaderboard fetch failed:', error);
@@ -560,10 +583,9 @@ export async function getLeaderboard(): Promise<LeaderboardEntry[]> {
         coin: row.coin ?? 0,
         xp: row.xp ?? 0,
         level: row.level ?? 1,
+        school_name: row.school_name || undefined,
       }))
-      // Ranked by XP (matches the "XP" figure shown next to each entry in the
-      // UI, and matches Tahap/level which is derived from xp too).
-      .sort((a, b) => b.xp - a.xp);
+      .sort((a, b) => b.coin - a.coin);
   } catch (e) {
     console.warn('Supabase leaderboard fetch threw:', e);
     return [];
@@ -874,40 +896,25 @@ export async function fetchExamDataFromSupabase(): Promise<{
 } | null> {
   if (!isSupabaseConfigured || !supabase) return null;
 
-  // Supabase/PostgREST silently caps any unlimited select() at 1000 rows.
-  // `questions` and especially `choices` (~4 rows per question) can exceed
-  // that as content grows — the query still "succeeds" with no error, it
-  // just quietly returns only the first 1000 rows, so some questions end up
-  // with zero choices in the app even though the data is correct in the DB.
-  // Page through in batches of 1000 so every row always comes back.
-  async function fetchAll<T>(table: string, orderCol?: string): Promise<T[]> {
-    const pageSize = 1000;
-    let from = 0;
-    let all: T[] = [];
-    while (true) {
-      let query = supabase!.from(table).select('*').range(from, from + pageSize - 1);
-      if (orderCol) query = query.order(orderCol, { ascending: true });
-      const { data, error } = await query;
-      if (error) {
-        console.warn(`Supabase fetch ${table} warning:`, error.message);
-        break;
-      }
-      if (!data || data.length === 0) break;
-      all = all.concat(data as T[]);
-      if (data.length < pageSize) break;
-      from += pageSize;
-    }
-    return all;
-  }
-
   try {
-    const [dbSubjects, dbPapers, dbSections, dbQuestions, dbChoices] = await Promise.all([
-      fetchAll<any>('subjects'),
-      fetchAll<any>('papers'),
-      fetchAll<any>('sections', 'order'),
-      fetchAll<any>('questions', 'order'),
-      fetchAll<any>('choices'),
+    const [
+      { data: dbSubjects, error: errSub },
+      { data: dbPapers, error: errPap },
+      { data: dbSections, error: errSec },
+      { data: dbQuestions, error: errQ },
+      { data: dbChoices, error: errCho },
+    ] = await Promise.all([
+      supabase.from('subjects').select('*'),
+      supabase.from('papers').select('*'),
+      supabase.from('sections').select('*').order('order', { ascending: true }),
+      supabase.from('questions').select('*').order('order', { ascending: true }),
+      supabase.from('choices').select('*'),
     ]);
+
+    if (errSub) console.warn('Supabase fetch subjects warning:', errSub.message);
+    if (errPap) console.warn('Supabase fetch papers warning:', errPap.message);
+    if (errSec) console.warn('Supabase fetch sections warning:', errSec.message);
+    if (errQ) console.warn('Supabase fetch questions warning:', errQ.message);
 
     let resSubjects: Subject[] | undefined;
     if (dbSubjects && dbSubjects.length > 0) {
@@ -1176,12 +1183,22 @@ function mapDbRoom(row: any): BattleRoom {
   };
 }
 
-export async function createBattleRoom(host: UserProfile, questionPool: Question[] = []): Promise<BattleRoom> {
+export async function createBattleRoom(
+  host: UserProfile,
+  questionPool: Question[] = [],
+  questionCount: number = 10
+): Promise<{ room: BattleRoom; isLocalOnly: boolean }> {
   const code = 'BTL-' + Math.floor(1000 + Math.random() * 9000);
-  const questionIds = [...questionPool].sort(() => 0.5 - Math.random()).slice(0, 10).map((q) => q.id);
+  // Use a real UUID for the shared row's id — a locally-invented string like
+  // `room-${Date.now()}` gets silently rejected by a `uuid` id column (insert
+  // throws, we fall back to local-only, and the room never becomes visible to
+  // a guest on another device even though the host sees no error). A proper
+  // UUID satisfies both a `uuid` column and a `text` column, so this works
+  // either way. See chat notes on the Battle Room join bug.
+  const questionIds = [...questionPool].sort(() => 0.5 - Math.random()).slice(0, questionCount).map((q) => q.id);
 
   const room: BattleRoom = {
-    id: `room-${Date.now()}`,
+    id: crypto.randomUUID(),
     code,
     host_id: host.id,
     host_name: host.name,
@@ -1208,7 +1225,7 @@ export async function createBattleRoom(host: UserProfile, questionPool: Question
         host_finished: false,
         guest_finished: false,
       });
-      if (!error) return room;
+      if (!error) return { room, isLocalOnly: false };
       console.warn('Supabase battle room insert failed, using local fallback:', error);
     } catch (e) {
       console.warn('Supabase battle room insert threw, using local fallback:', e);
@@ -1218,7 +1235,7 @@ export async function createBattleRoom(host: UserProfile, questionPool: Question
   const rooms = getBattleRooms();
   rooms.push(room);
   localStorage.setItem(LOCAL_BATTLE_ROOMS_KEY, JSON.stringify(rooms));
-  return room;
+  return { room, isLocalOnly: true };
 }
 
 export async function joinBattleRoom(code: string, guest: UserProfile): Promise<BattleRoom | null> {
