@@ -585,7 +585,12 @@ export async function getLeaderboard(): Promise<LeaderboardEntry[]> {
         level: row.level ?? 1,
         school_name: row.school_name || undefined,
       }))
-      .sort((a, b) => b.coin - a.coin);
+      // Ranked by XP (matches the "XP" figure shown next to each entry in the
+      // UI, and matches Tahap/level which is derived from xp too). Previously
+      // sorted by coin instead — same list, but the displayed order didn't
+      // match the number shown beside it (e.g. a 0 XP account could outrank
+      // a 920 XP account if it happened to hold more coin).
+      .sort((a, b) => b.xp - a.xp);
   } catch (e) {
     console.warn('Supabase leaderboard fetch threw:', e);
     return [];
@@ -1339,4 +1344,3 @@ export async function finishBattleRoom(roomId: string, isHost: boolean): Promise
     localStorage.setItem(LOCAL_BATTLE_ROOMS_KEY, JSON.stringify(rooms));
   }
 }
-
