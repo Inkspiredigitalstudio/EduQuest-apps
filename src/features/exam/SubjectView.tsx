@@ -73,7 +73,7 @@ export const SubjectView: React.FC<SubjectViewProps> = ({ subject, papers, secti
                 }`}
               >
                 <FileText className="w-4 h-4" />
-                <span>Tahun {paper.year}</span>
+                <span>{paper.title}</span>
               </button>
             );
           })}
