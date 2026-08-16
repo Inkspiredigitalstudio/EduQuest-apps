@@ -931,7 +931,7 @@ export async function fetchParentChildrenData(phoneInput: string): Promise<{
   }
 
   for (const u of allLocal) {
-    if (u.phone) {
+    if (u.phone && u.role !== 'parent' && u.role !== 'admin') {
       const uPhoneClean = u.phone.replace(/[^0-9]/g, '');
       if (uPhoneClean && (uPhoneClean.includes(cleanPhone) || cleanPhone.includes(uPhoneClean))) {
         matchedChildrenMap.set(u.id, u);
