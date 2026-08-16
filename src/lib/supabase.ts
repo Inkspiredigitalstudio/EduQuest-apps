@@ -250,7 +250,9 @@ export async function registerUser(
   password: string,
   role: 'student' | 'parent' = 'student',
   phone?: string,
-  customUsername?: string
+  customUsername?: string,
+  schoolInfo?: { level?: 'rendah' | 'menengah'; year?: number; form?: number },
+  contactEmail?: string
 ): Promise<{
   profile: UserProfile;
   loginId: string;
@@ -272,6 +274,9 @@ export async function registerUser(
 
   const email = generateSyntheticEmail(loginId);
   const inviteCode = generateInviteCode();
+  const schoolLevel = schoolInfo?.level;
+  const schoolYear = schoolLevel === 'rendah' ? schoolInfo?.year : undefined;
+  const schoolForm = schoolLevel === 'menengah' ? schoolInfo?.form : undefined;
 
   if (isSupabaseConfigured && supabase) {
     try {
@@ -301,6 +306,10 @@ export async function registerUser(
           streak_days: 1,
           role,
           invite_code: inviteCode,
+          school_level: schoolLevel,
+          school_year: schoolYear,
+          school_form: schoolForm,
+          contact_email: contactEmail || undefined,
         };
 
         // Ensure user row exists in public.users
@@ -316,6 +325,10 @@ export async function registerUser(
             role,
             invite_code: inviteCode,
             created_at: userProfile.created_at,
+            school_level: schoolLevel || null,
+            school_year: schoolYear ?? null,
+            school_form: schoolForm ?? null,
+            contact_email: contactEmail || null,
           };
           const { error: upsertErr } = await supabase.from('users').upsert([dbUserPayload]);
           if (upsertErr) {
@@ -355,6 +368,10 @@ export async function registerUser(
     role,
     invite_code: inviteCode,
     password,
+    school_level: schoolLevel,
+    school_year: schoolYear,
+    school_form: schoolForm,
+    contact_email: contactEmail || undefined,
   };
 
   existingUsers.push(localProfile);
@@ -367,6 +384,37 @@ export async function registerUser(
 // Backward compatible wrapper
 export async function registerStudent(name: string, pin: string, phone?: string) {
   return registerUser(name, pin, 'student', phone);
+}
+
+// Self-service "Lupa Kata Laluan" — calls the reset-password Edge Function,
+// which verifies the parent phone server-side (with the service-role key)
+// and updates the real Supabase Auth password. Never resolves the actual
+// new password back to the caller; only success/failure + whether the
+// parent-notification email could be sent.
+export async function requestPasswordReset(
+  loginId: string,
+  parentPhone: string,
+  newPassword: string
+): Promise<{ success: boolean; error?: string; emailSent?: boolean; hasParentEmail?: boolean }> {
+  if (!isSupabaseConfigured || !supabase) {
+    return { success: false, error: 'Ciri ini memerlukan sambungan Supabase.' };
+  }
+  try {
+    const { data, error } = await supabase.functions.invoke('reset-password', {
+      body: { loginId, parentPhone, newPassword },
+    });
+    if (error) {
+      console.warn('requestPasswordReset invoke error:', error);
+      return { success: false, error: 'Gagal berhubung dengan pelayan. Sila cuba lagi.' };
+    }
+    if (!data?.success) {
+      return { success: false, error: data?.error || 'Gagal tukar kata laluan. Sila cuba lagi.' };
+    }
+    return { success: true, emailSent: data.emailSent, hasParentEmail: data.hasParentEmail };
+  } catch (e) {
+    console.warn('requestPasswordReset threw:', e);
+    return { success: false, error: 'Gagal berhubung dengan pelayan. Sila cuba lagi.' };
+  }
 }
 
 
@@ -405,6 +453,10 @@ export async function loginUser(loginIdInput: string, passwordInput: string): Pr
           streak_days: 1,
           role: dbUser?.role || authData?.user?.user_metadata?.role || 'student',
           invite_code: dbUser?.invite_code || generateInviteCode(),
+          school_level: dbUser?.school_level || undefined,
+          school_year: dbUser?.school_year ?? undefined,
+          school_form: dbUser?.school_form ?? undefined,
+          contact_email: dbUser?.contact_email || undefined,
         };
 
         // Sync to public.users if not present
@@ -512,6 +564,7 @@ export async function getAllRegisteredUsers(): Promise<UserProfile[]> {
             created_at: row.created_at,
             role: row.role,
             invite_code: row.invite_code,
+            contact_email: row.contact_email || undefined,
           });
         });
         return Array.from(merged.values()).sort((a, b) => a.name.localeCompare(b.name));
@@ -636,6 +689,78 @@ export async function updateUserPhone(userId: string, phone: string): Promise<{ 
   return { success: true };
 }
 
+// Admin-side edit: name/phone/email together in one write, since the Admin
+// participant panel edits all three from one form.
+export async function updateUserProfileFields(
+  userId: string,
+  fields: { name?: string; phone?: string; contact_email?: string }
+): Promise<{ success: boolean; error?: string }> {
+  const patch: Record<string, string | undefined> = {};
+  if (fields.name !== undefined) patch.name = fields.name.trim();
+  if (fields.phone !== undefined) patch.phone = fields.phone.trim() || undefined;
+  if (fields.contact_email !== undefined) patch.contact_email = fields.contact_email.trim() || undefined;
+
+  const existingUsers: UserProfile[] = JSON.parse(localStorage.getItem(LOCAL_USERS_LIST_KEY) || '[]');
+  const idx = existingUsers.findIndex((u) => u.id === userId);
+  if (idx >= 0) {
+    existingUsers[idx] = { ...existingUsers[idx], ...patch };
+    localStorage.setItem(LOCAL_USERS_LIST_KEY, JSON.stringify(existingUsers));
+  }
+
+  const active = getCurrentUser();
+  if (active && active.id === userId) {
+    localStorage.setItem(LOCAL_USER_KEY, JSON.stringify({ ...active, ...patch }));
+  }
+
+  if (isSupabaseConfigured && supabase) {
+    try {
+      const dbPatch: Record<string, string | null> = {};
+      if (fields.name !== undefined) dbPatch.name = patch.name || '';
+      if (fields.phone !== undefined) dbPatch.phone = patch.phone || null;
+      if (fields.contact_email !== undefined) dbPatch.contact_email = patch.contact_email || null;
+
+      const { error } = await supabase.from('users').update(dbPatch).eq('id', userId);
+      if (error) {
+        console.warn('Update profile fields in Supabase failed:', error);
+        return { success: false, error: 'Gagal simpan ke pangkalan data. Sila cuba lagi.' };
+      }
+    } catch (e) {
+      console.warn('Update profile fields in Supabase threw:', e);
+      return { success: false, error: 'Gagal simpan ke pangkalan data. Sila cuba lagi.' };
+    }
+  }
+
+  return { success: true };
+}
+
+// Removes a participant's profile row so they can no longer log in or appear
+// in lists. This only removes the public.users row (and their progress /
+// attempts) — the underlying Supabase Auth account isn't removed, since that
+// needs a service-role backend call this client-side app doesn't have. In
+// practice the account still becomes unusable: loginUser() looks up by
+// login_id against public.users, so once that row is gone, login fails.
+export async function deleteUserAccount(userId: string): Promise<{ success: boolean; error?: string }> {
+  const existingUsers: UserProfile[] = JSON.parse(localStorage.getItem(LOCAL_USERS_LIST_KEY) || '[]');
+  localStorage.setItem(LOCAL_USERS_LIST_KEY, JSON.stringify(existingUsers.filter((u) => u.id !== userId)));
+
+  if (isSupabaseConfigured && supabase) {
+    try {
+      await supabase.from('progress').delete().eq('user_id', userId);
+      await supabase.from('attempts').delete().eq('user_id', userId);
+      const { error } = await supabase.from('users').delete().eq('id', userId);
+      if (error) {
+        console.warn('Delete user in Supabase failed:', error);
+        return { success: false, error: 'Gagal padam dari pangkalan data. Sila cuba lagi.' };
+      }
+    } catch (e) {
+      console.warn('Delete user in Supabase threw:', e);
+      return { success: false, error: 'Gagal padam dari pangkalan data. Sila cuba lagi.' };
+    }
+  }
+
+  return { success: true };
+}
+
 export async function checkAndRestoreSession(): Promise<UserProfile | null> {
   const local = getCurrentUser();
   if (local) return local;
@@ -663,6 +788,10 @@ export async function checkAndRestoreSession(): Promise<UserProfile | null> {
             streak_days: 1,
             role: dbUser.role || 'student',
             invite_code: dbUser.invite_code,
+            school_level: dbUser.school_level || undefined,
+            school_year: dbUser.school_year ?? undefined,
+            school_form: dbUser.school_form ?? undefined,
+            contact_email: dbUser.contact_email || undefined,
           };
           localStorage.setItem(LOCAL_USER_KEY, JSON.stringify(profile));
           return profile;
