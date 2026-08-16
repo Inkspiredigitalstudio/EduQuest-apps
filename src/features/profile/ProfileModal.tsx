@@ -1,6 +1,7 @@
 import React, { useState } from 'react';
 import { UserProfile, UserProgress } from '../../types';
 import { soundManager } from '../../lib/audio';
+import { updateUserPhone } from '../../lib/supabase';
 import {
   User,
   Trophy,
@@ -17,6 +18,7 @@ import {
   GraduationCap,
   School,
   Star,
+  Pencil,
 } from 'lucide-react';
 
 interface ProfileModalProps {
@@ -25,13 +27,32 @@ interface ProfileModalProps {
   progressList: UserProgress[];
   onClose: () => void;
   onLogout: () => void;
+  onUserUpdate?: (updated: UserProfile) => void;
 }
 
-export const ProfileModal: React.FC<ProfileModalProps> = ({ isOpen, user, progressList = [], onClose, onLogout }) => {
+export const ProfileModal: React.FC<ProfileModalProps> = ({ isOpen, user, progressList = [], onClose, onLogout, onUserUpdate }) => {
   const [copied, setCopied] = useState(false);
   const [activeTab, setActiveTab] = useState<'student' | 'parent'>('student');
+  const [editingPhone, setEditingPhone] = useState(false);
+  const [phoneInput, setPhoneInput] = useState(user.phone || '');
+  const [savingPhone, setSavingPhone] = useState(false);
+  const [phoneError, setPhoneError] = useState('');
 
   if (!isOpen) return null;
+
+  const handleSavePhone = async () => {
+    setSavingPhone(true);
+    setPhoneError('');
+    const result = await updateUserPhone(user.id, phoneInput);
+    setSavingPhone(false);
+    if (result.success) {
+      soundManager.playClick();
+      onUserUpdate?.({ ...user, phone: phoneInput.trim() || undefined });
+      setEditingPhone(false);
+    } else {
+      setPhoneError(result.error || 'Gagal simpan. Sila cuba lagi.');
+    }
+  };
 
   const safeProgressList = progressList || [];
 
@@ -279,7 +300,7 @@ export const ProfileModal: React.FC<ProfileModalProps> = ({ isOpen, user, progre
               <div className="bg-cream-100 border border-sand-200 rounded-2xl p-4 space-y-3">
                 <h3 className="text-xs font-bold text-ink-500 uppercase tracking-wide flex items-center gap-1.5">
                   <User className="w-3.5 h-3.5 text-mist-500" />
-                  <span>Maklumat Akaun &amp; Sekolah</span>
+                  <span>Maklumat Pelajar</span>
                 </h3>
 
                 <div className="space-y-2 text-xs">
@@ -287,9 +308,51 @@ export const ProfileModal: React.FC<ProfileModalProps> = ({ isOpen, user, progre
                     <span className="text-ink-500">ID Pengguna</span>
                     <span className="font-mono font-bold text-ink-900">{user.login_id}</span>
                   </div>
-                  <div className="flex justify-between py-1 border-b border-sand-200 text-ink-700">
-                    <span className="text-ink-500">No. Telefon</span>
-                    <span className="font-bold text-ink-900">{user.phone || 'Belum ditetapkan'}</span>
+                  <div className="py-1.5 border-b border-sand-200 text-ink-700">
+                    <div className="flex justify-between items-center">
+                      <span className="text-ink-500">No. Telefon</span>
+                      {!editingPhone && (
+                        <button
+                          onClick={() => {
+                            setPhoneInput(user.phone || '');
+                            setPhoneError('');
+                            setEditingPhone(true);
+                          }}
+                          className="flex items-center gap-1 text-ink-900"
+                        >
+                          <span className="font-bold">{user.phone || 'Belum ditetapkan'}</span>
+                          <Pencil className="w-3 h-3 text-ink-300" />
+                        </button>
+                      )}
+                    </div>
+                    {editingPhone && (
+                      <div className="mt-2 space-y-1.5">
+                        <div className="flex items-center gap-2">
+                          <input
+                            type="tel"
+                            value={phoneInput}
+                            onChange={(e) => setPhoneInput(e.target.value)}
+                            placeholder="Contoh: 0123456789"
+                            className="flex-1 bg-cream-100 border border-sand-300 focus:border-mist-400 text-ink-900 text-xs rounded-lg px-2.5 py-1.5 outline-none"
+                            autoFocus
+                          />
+                          <button
+                            onClick={handleSavePhone}
+                            disabled={savingPhone}
+                            className="px-2.5 py-1.5 bg-mist-500 hover:bg-mist-600 text-white text-xs font-bold rounded-lg disabled:opacity-60"
+                          >
+                            {savingPhone ? '...' : 'Simpan'}
+                          </button>
+                          <button
+                            onClick={() => { setEditingPhone(false); setPhoneError(''); }}
+                            className="px-2.5 py-1.5 bg-cream-100 hover:bg-cream-200 text-ink-500 text-xs font-bold rounded-lg"
+                          >
+                            Batal
+                          </button>
+                        </div>
+                        {phoneError && <p className="text-[10px] text-clay-500">{phoneError}</p>}
+                      </div>
+                    )}
                   </div>
                   <div className="flex justify-between py-1 border-b border-sand-200 text-ink-700">
                     <span className="text-ink-500">Emel</span>
