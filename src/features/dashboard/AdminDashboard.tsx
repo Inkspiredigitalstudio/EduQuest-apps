@@ -1,12 +1,12 @@
 import React, { useState, useEffect } from 'react';
 import { UserProfile, Subject, Paper, Section, Question, Choice } from '../../types';
-import { isSupabaseConfigured, getAllRegisteredUsers, resetUserPassword, testSupabaseConnection, supabaseDiagnostic } from '../../lib/supabase';
+import { isSupabaseConfigured, getAllRegisteredUsers, resetUserPassword, updateUserProfileFields, deleteUserAccount, registerUser, testSupabaseConnection, supabaseDiagnostic } from '../../lib/supabase';
 import { SUPABASE_SQL_SETUP_DDL } from '../../data/seedData';
 import { soundManager } from '../../lib/audio';
 import {
   Shield, Database, Plus, CheckCircle2, Code2, Copy, LogOut, Sun, Moon,
   Pencil, Trash2, X, AlertCircle, Upload, ListChecks, Lock, Users, Search, KeyRound, RefreshCw,
-  Image as ImageIcon,
+  Image as ImageIcon, Phone, Mail,
 } from 'lucide-react';
 
 interface AdminDashboardProps {
@@ -154,6 +154,8 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
   // ---- Question bank search / filter (helps find one question among many) ----
   const [questionSearch, setQuestionSearch] = useState('');
   const [questionSubjectFilter, setQuestionSubjectFilter] = useState<string>('all');
+  const [questionPaperFilter, setQuestionPaperFilter] = useState<string>('all');
+  const [questionSectionFilter, setQuestionSectionFilter] = useState<string>('all');
 
   const getSubjectForQuestion = (q: Question): Subject | undefined => {
     const sec = sections.find((s) => s.id === q.section_id);
@@ -163,16 +165,76 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
     return subjects.find((s) => s.id === paper.subject_id);
   };
 
-  const filteredQuestions = questions.filter((q) => {
-    if (questionSubjectFilter !== 'all') {
-      const subj = getSubjectForQuestion(q);
-      if (subj?.id !== questionSubjectFilter) return false;
-    }
-    if (questionSearch.trim()) {
-      return q.question_text.toLowerCase().includes(questionSearch.trim().toLowerCase());
-    }
-    return true;
-  });
+  const getPaperForQuestion = (q: Question): Paper | undefined => {
+    const sec = sections.find((s) => s.id === q.section_id);
+    if (!sec) return undefined;
+    return papers.find((p) => p.id === sec.paper_id);
+  };
+
+  // Tahun (Paper) options scoped to the chosen Subjek; Bahagian options
+  // scoped to the chosen Tahun — each level only makes sense once its parent
+  // is picked, so the dropdowns cascade Subjek → Tahun → Bahagian.
+  const papersForSubjectFilter = questionSubjectFilter === 'all'
+    ? []
+    : papers.filter((p) => p.subject_id === questionSubjectFilter).sort((a, b) => (b.year ?? 0) - (a.year ?? 0));
+
+  const sectionsForPaperFilter = questionPaperFilter === 'all'
+    ? []
+    : sections.filter((s) => s.paper_id === questionPaperFilter);
+
+  const handleQuestionSubjectFilterChange = (value: string) => {
+    setQuestionSubjectFilter(value);
+    setQuestionPaperFilter('all');
+    setQuestionSectionFilter('all');
+  };
+
+  const handleQuestionPaperFilterChange = (value: string) => {
+    setQuestionPaperFilter(value);
+    setQuestionSectionFilter('all');
+  };
+
+  // Sort key for the question list: group by Subjek → Tahun → Bahagian, then
+  // by each question's own `order` within its Bahagian — so the list always
+  // reads 1, 2, 3, 4... matching the real exam paper, instead of whatever
+  // order Supabase happened to return.
+  const compareQuestionsForDisplay = (a: Question, b: Question) => {
+    const subjA = getSubjectForQuestion(a);
+    const subjB = getSubjectForQuestion(b);
+    const subjCmp = (subjA?.name || '').localeCompare(subjB?.name || '');
+    if (subjCmp !== 0) return subjCmp;
+
+    const paperA = getPaperForQuestion(a);
+    const paperB = getPaperForQuestion(b);
+    const yearCmp = (paperA?.year ?? 0) - (paperB?.year ?? 0);
+    if (yearCmp !== 0) return yearCmp;
+
+    const secA = sections.find((s) => s.id === a.section_id);
+    const secB = sections.find((s) => s.id === b.section_id);
+    const secOrderCmp = (secA?.order ?? 0) - (secB?.order ?? 0);
+    if (secOrderCmp !== 0) return secOrderCmp;
+
+    return (a.order ?? 0) - (b.order ?? 0);
+  };
+
+  const filteredQuestions = questions
+    .filter((q) => {
+      if (questionSubjectFilter !== 'all') {
+        const subj = getSubjectForQuestion(q);
+        if (subj?.id !== questionSubjectFilter) return false;
+      }
+      if (questionPaperFilter !== 'all') {
+        const paper = getPaperForQuestion(q);
+        if (paper?.id !== questionPaperFilter) return false;
+      }
+      if (questionSectionFilter !== 'all' && q.section_id !== questionSectionFilter) {
+        return false;
+      }
+      if (questionSearch.trim()) {
+        return q.question_text.toLowerCase().includes(questionSearch.trim().toLowerCase());
+      }
+      return true;
+    })
+    .sort(compareQuestionsForDisplay);
 
   const handleDeleteClick = (q: Question) => {
     if (!confirm(`Padam soalan ini secara kekal?\n\n"${q.question_text.slice(0, 60)}..."`)) return;
@@ -295,6 +357,95 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
     const newPassword = resetUserPassword(participant.id);
     setResetResult({ userId: participant.id, password: newPassword });
     soundManager.playLevelUp();
+  };
+
+  const [editingParticipantId, setEditingParticipantId] = useState<string | null>(null);
+  const [editForm, setEditForm] = useState({ name: '', phone: '', email: '' });
+  const [savingParticipant, setSavingParticipant] = useState(false);
+  const [participantEditError, setParticipantEditError] = useState('');
+
+  const handleStartEditParticipant = (participant: UserProfile) => {
+    setEditingParticipantId(participant.id);
+    setEditForm({ name: participant.name, phone: participant.phone || '', email: participant.contact_email || '' });
+    setParticipantEditError('');
+  };
+
+  const handleSaveParticipant = async (participant: UserProfile) => {
+    if (!editForm.name.trim()) {
+      setParticipantEditError('Nama tidak boleh kosong.');
+      return;
+    }
+    setSavingParticipant(true);
+    setParticipantEditError('');
+    const result = await updateUserProfileFields(participant.id, {
+      name: editForm.name,
+      phone: editForm.phone,
+      contact_email: editForm.email,
+    });
+    setSavingParticipant(false);
+    if (result.success) {
+      soundManager.playClick();
+      setParticipants((prev) =>
+        prev.map((p) =>
+          p.id === participant.id
+            ? { ...p, name: editForm.name.trim(), phone: editForm.phone.trim() || undefined, contact_email: editForm.email.trim() || undefined }
+            : p
+        )
+      );
+      setEditingParticipantId(null);
+    } else {
+      setParticipantEditError(result.error || 'Gagal simpan. Sila cuba lagi.');
+    }
+  };
+
+  const handleDeleteParticipant = async (participant: UserProfile) => {
+    if (!confirm(`Padam akaun ${participant.name} (${participant.login_id}) secara kekal?\n\nSemua rekod kemajuan akan turut dipadam. Tindakan ini TIDAK boleh diundur.`)) return;
+    soundManager.playClick();
+    const result = await deleteUserAccount(participant.id);
+    if (result.success) {
+      setParticipants((prev) => prev.filter((p) => p.id !== participant.id));
+      if (editingParticipantId === participant.id) setEditingParticipantId(null);
+    } else {
+      alert(result.error || 'Gagal padam akaun.');
+    }
+  };
+
+  // ---- Add new participant (admin-created, no self-registration needed) ----
+  const [showAddParticipant, setShowAddParticipant] = useState(false);
+  const [newParticipant, setNewParticipant] = useState({
+    name: '', username: '', password: '', role: 'student' as 'student' | 'parent', phone: '', email: '',
+  });
+  const [addingParticipant, setAddingParticipant] = useState(false);
+  const [addParticipantError, setAddParticipantError] = useState('');
+
+  const handleAddParticipant = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!newParticipant.name.trim() || !newParticipant.username.trim() || !newParticipant.password.trim()) {
+      setAddParticipantError('Nama, ID Username, dan Kata Laluan wajib diisi.');
+      return;
+    }
+    setAddingParticipant(true);
+    setAddParticipantError('');
+    const res = await registerUser(
+      newParticipant.name.trim(),
+      newParticipant.password.trim(),
+      newParticipant.role,
+      newParticipant.phone.trim(),
+      newParticipant.username.trim()
+    );
+    if (res.error) {
+      setAddingParticipant(false);
+      setAddParticipantError(res.error);
+      return;
+    }
+    if (newParticipant.email.trim()) {
+      await updateUserProfileFields(res.profile.id, { contact_email: newParticipant.email.trim() });
+    }
+    setAddingParticipant(false);
+    soundManager.playLevelUp();
+    setNewParticipant({ name: '', username: '', password: '', role: 'student', phone: '', email: '' });
+    setShowAddParticipant(false);
+    loadParticipants();
   };
 
   const filteredParticipants = participants.filter((p) => {
@@ -554,8 +705,8 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
                     <span>Bank Soalan Sedia Ada ({filteredQuestions.length} / {questions.length})</span>
                   </h3>
 
-                  <div className="flex flex-col sm:flex-row gap-2">
-                    <div className="relative flex-1">
+                  <div className="flex flex-col sm:flex-row sm:flex-wrap gap-2">
+                    <div className="relative flex-1 min-w-[140px]">
                       <Search className="w-3.5 h-3.5 text-ink-300 absolute left-3 top-3 pointer-events-none" />
                       <input
                         type="text"
@@ -567,12 +718,38 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
                     </div>
                     <select
                       value={questionSubjectFilter}
-                      onChange={(e) => setQuestionSubjectFilter(e.target.value)}
-                      className="bg-cream-100 border border-sand-300 text-ink-900 text-xs rounded-xl px-3 py-2 outline-none focus:border-mist-400"
+                      onChange={(e) => handleQuestionSubjectFilterChange(e.target.value)}
+                      className="w-full sm:w-36 bg-cream-100 border border-sand-300 text-ink-900 text-xs rounded-xl px-3 py-2 outline-none focus:border-mist-400 truncate"
                     >
                       <option value="all">Semua Subjek</option>
                       {subjects.map((s) => (
                         <option key={s.id} value={s.id}>{s.name}</option>
+                      ))}
+                    </select>
+                    <select
+                      value={questionPaperFilter}
+                      onChange={(e) => handleQuestionPaperFilterChange(e.target.value)}
+                      disabled={questionSubjectFilter === 'all'}
+                      className="w-full sm:w-32 bg-cream-100 border border-sand-300 text-ink-900 text-xs rounded-xl px-3 py-2 outline-none focus:border-mist-400 disabled:opacity-50 disabled:cursor-not-allowed truncate"
+                    >
+                      <option value="all">
+                        {questionSubjectFilter === 'all' ? 'Pilih Subjek' : 'Semua Tahun'}
+                      </option>
+                      {papersForSubjectFilter.map((p) => (
+                        <option key={p.id} value={p.id}>{p.year}</option>
+                      ))}
+                    </select>
+                    <select
+                      value={questionSectionFilter}
+                      onChange={(e) => setQuestionSectionFilter(e.target.value)}
+                      disabled={questionPaperFilter === 'all'}
+                      className="w-full sm:w-40 bg-cream-100 border border-sand-300 text-ink-900 text-xs rounded-xl px-3 py-2 outline-none focus:border-mist-400 disabled:opacity-50 disabled:cursor-not-allowed truncate"
+                    >
+                      <option value="all">
+                        {questionPaperFilter === 'all' ? 'Pilih Tahun' : 'Semua Bahagian'}
+                      </option>
+                      {sectionsForPaperFilter.map((s) => (
+                        <option key={s.id} value={s.id}>{s.title}</option>
                       ))}
                     </select>
                   </div>
@@ -583,12 +760,11 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
                     ) : (
                       filteredQuestions.map((q) => {
                         const subj = getSubjectForQuestion(q);
-                        const idx = questions.indexOf(q);
                         return (
                           <div key={q.id} className="p-3 bg-cream-100 rounded-xl border border-sand-200 text-xs flex items-center justify-between gap-3">
                             <div className="min-w-0 flex-1">
                               <div className="flex items-center gap-1.5 flex-wrap">
-                                <span className="font-bold text-mist-600">#{idx + 1}</span>
+                                <span className="font-bold text-mist-600">Soalan #{q.order ?? '-'}</span>
                                 {subj && (
                                   <span className="text-[10px] font-bold px-1.5 py-0.5 rounded bg-mist-100 text-mist-600">{subj.name}</span>
                                 )}
@@ -664,7 +840,7 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
               </div>
             )}
 
-            {/* TAB 3: Participants — search, view, reset password */}
+            {/* TAB 3: Participants — search, view, add, edit, delete, reset password */}
             {activeTab === 'participants' && (
               <div className="bg-cream-50 border border-sand-200 rounded-3xl p-5 space-y-4">
                 <div className="flex items-center justify-between">
@@ -672,14 +848,82 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
                     <Users className="w-4 h-4 text-mist-500" />
                     <span>Senarai Peserta ({participants.length})</span>
                   </h3>
-                  <button
-                    onClick={loadParticipants}
-                    className="p-2 rounded-lg bg-cream-100 hover:bg-cream-200 text-ink-500 transition-colors"
-                    title="Muat Semula"
-                  >
-                    <RefreshCw className={`w-3.5 h-3.5 ${loadingParticipants ? 'animate-spin' : ''}`} />
-                  </button>
+                  <div className="flex items-center gap-1.5">
+                    <button
+                      onClick={() => { setShowAddParticipant((v) => !v); setAddParticipantError(''); }}
+                      className="p-2 rounded-lg bg-cream-100 hover:bg-mist-100 text-mist-600 transition-colors"
+                      title="Tambah Peserta Baru"
+                    >
+                      <Plus className="w-3.5 h-3.5" />
+                    </button>
+                    <button
+                      onClick={loadParticipants}
+                      className="p-2 rounded-lg bg-cream-100 hover:bg-cream-200 text-ink-500 transition-colors"
+                      title="Muat Semula"
+                    >
+                      <RefreshCw className={`w-3.5 h-3.5 ${loadingParticipants ? 'animate-spin' : ''}`} />
+                    </button>
+                  </div>
                 </div>
+
+                {showAddParticipant && (
+                  <form onSubmit={handleAddParticipant} className="p-4 bg-mist-50 border border-mist-200 rounded-2xl space-y-2.5">
+                    <h4 className="text-xs font-bold text-ink-700">Tambah Peserta Baru</h4>
+                    <div className="grid grid-cols-2 gap-2">
+                      <input
+                        type="text"
+                        value={newParticipant.name}
+                        onChange={(e) => setNewParticipant({ ...newParticipant, name: e.target.value })}
+                        placeholder="Nama Penuh"
+                        className="col-span-2 bg-cream-50 border border-sand-300 focus:border-mist-400 text-ink-900 text-xs rounded-lg px-2.5 py-2 outline-none"
+                      />
+                      <input
+                        type="text"
+                        value={newParticipant.username}
+                        onChange={(e) => setNewParticipant({ ...newParticipant, username: e.target.value.toUpperCase() })}
+                        placeholder="ID Username"
+                        className="bg-cream-50 border border-sand-300 focus:border-mist-400 text-ink-900 text-xs rounded-lg px-2.5 py-2 outline-none font-mono"
+                      />
+                      <input
+                        type="text"
+                        value={newParticipant.password}
+                        onChange={(e) => setNewParticipant({ ...newParticipant, password: e.target.value })}
+                        placeholder="Kata Laluan / PIN"
+                        className="bg-cream-50 border border-sand-300 focus:border-mist-400 text-ink-900 text-xs rounded-lg px-2.5 py-2 outline-none"
+                      />
+                      <select
+                        value={newParticipant.role}
+                        onChange={(e) => setNewParticipant({ ...newParticipant, role: e.target.value as 'student' | 'parent' })}
+                        className="bg-cream-50 border border-sand-300 text-ink-900 text-xs rounded-lg px-2.5 py-2 outline-none"
+                      >
+                        <option value="student">Pelajar</option>
+                        <option value="parent">Ibu Bapa</option>
+                      </select>
+                      <input
+                        type="tel"
+                        value={newParticipant.phone}
+                        onChange={(e) => setNewParticipant({ ...newParticipant, phone: e.target.value })}
+                        placeholder="No. Telefon (Pilihan)"
+                        className="bg-cream-50 border border-sand-300 focus:border-mist-400 text-ink-900 text-xs rounded-lg px-2.5 py-2 outline-none"
+                      />
+                      <input
+                        type="email"
+                        value={newParticipant.email}
+                        onChange={(e) => setNewParticipant({ ...newParticipant, email: e.target.value })}
+                        placeholder="Emel (Pilihan)"
+                        className="bg-cream-50 border border-sand-300 focus:border-mist-400 text-ink-900 text-xs rounded-lg px-2.5 py-2 outline-none"
+                      />
+                    </div>
+                    {addParticipantError && <p className="text-[11px] text-clay-500">{addParticipantError}</p>}
+                    <button
+                      type="submit"
+                      disabled={addingParticipant}
+                      className="w-full py-2.5 bg-mist-500 hover:bg-mist-600 text-white text-xs font-bold rounded-xl disabled:opacity-60"
+                    >
+                      {addingParticipant ? 'Mencipta...' : 'Cipta Akaun'}
+                    </button>
+                  </form>
+                )}
 
                 <div className="relative">
                   <Search className="w-4 h-4 text-ink-300 absolute left-3.5 top-3.5 pointer-events-none" />
@@ -714,35 +958,106 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
                     <div className="text-center py-8 text-xs text-ink-500">Tiada peserta dijumpai.</div>
                   ) : (
                     filteredParticipants.map((p) => (
-                      <div key={p.id} className="p-3.5 bg-cream-100 border border-sand-200 rounded-2xl flex items-center justify-between gap-3">
-                        <div className="flex items-center gap-3 min-w-0">
-                          <div className="w-9 h-9 rounded-xl bg-mist-100 text-mist-600 flex items-center justify-center font-bold text-xs shrink-0">
-                            {p.name.charAt(0).toUpperCase()}
-                          </div>
-                          <div className="min-w-0">
-                            <div className="text-sm font-bold text-ink-900 truncate">{p.name}</div>
-                            <div className="flex items-center gap-2 text-[11px] text-ink-500">
-                              <span className="font-mono">{p.login_id}</span>
-                              <span className="capitalize px-1.5 py-0.5 bg-cream-200 rounded text-[10px] font-bold">{p.role || 'student'}</span>
+                      <div key={p.id} className="p-3.5 bg-cream-100 border border-sand-200 rounded-2xl space-y-2.5">
+                        <div className="flex items-center justify-between gap-3">
+                          <div className="flex items-center gap-3 min-w-0">
+                            <div className="w-9 h-9 rounded-xl bg-mist-100 text-mist-600 flex items-center justify-center font-bold text-xs shrink-0">
+                              {p.name.charAt(0).toUpperCase()}
                             </div>
+                            <div className="min-w-0">
+                              <div className="text-sm font-bold text-ink-900 truncate">{p.name}</div>
+                              <div className="flex items-center gap-2 text-[11px] text-ink-500">
+                                <span className="font-mono">{p.login_id}</span>
+                                <span className="capitalize px-1.5 py-0.5 bg-cream-200 rounded text-[10px] font-bold">{p.role || 'student'}</span>
+                              </div>
+                            </div>
+                          </div>
+
+                          <div className="flex items-center gap-1.5 shrink-0">
+                            <button
+                              onClick={() => (editingParticipantId === p.id ? setEditingParticipantId(null) : handleStartEditParticipant(p))}
+                              className="p-2 bg-cream-50 hover:bg-mist-100 text-mist-600 border border-sand-200 hover:border-mist-300 rounded-xl transition-colors"
+                              title="Kemas Kini Profil"
+                            >
+                              <Pencil className="w-3.5 h-3.5" />
+                            </button>
+                            <button
+                              onClick={() => handleResetPassword(p)}
+                              className="px-3 py-2 bg-cream-50 hover:bg-honey-100 text-honey-500 border border-sand-200 hover:border-honey-300 rounded-xl text-xs font-bold flex items-center gap-1.5 transition-colors"
+                              title="Reset Kata Laluan"
+                            >
+                              <KeyRound className="w-3.5 h-3.5" />
+                              <span className="hidden sm:inline">Reset PIN</span>
+                            </button>
+                            <button
+                              onClick={() => handleDeleteParticipant(p)}
+                              className="p-2 bg-cream-50 hover:bg-clay-100 text-clay-500 border border-sand-200 hover:border-clay-300 rounded-xl transition-colors"
+                              title="Padam Akaun"
+                            >
+                              <Trash2 className="w-3.5 h-3.5" />
+                            </button>
                           </div>
                         </div>
 
-                        <button
-                          onClick={() => handleResetPassword(p)}
-                          className="px-3 py-2 bg-cream-50 hover:bg-honey-100 text-honey-500 border border-sand-200 hover:border-honey-300 rounded-xl text-xs font-bold flex items-center gap-1.5 transition-colors shrink-0"
-                          title="Reset Kata Laluan"
-                        >
-                          <KeyRound className="w-3.5 h-3.5" />
-                          <span className="hidden sm:inline">Reset PIN</span>
-                        </button>
+                        {editingParticipantId === p.id ? (
+                          <div className="pl-12 space-y-2">
+                            <input
+                              type="text"
+                              value={editForm.name}
+                              onChange={(e) => setEditForm({ ...editForm, name: e.target.value })}
+                              placeholder="Nama Penuh"
+                              className="w-full bg-cream-50 border border-sand-300 focus:border-mist-400 text-ink-900 text-xs rounded-lg px-2.5 py-1.5 outline-none"
+                            />
+                            <input
+                              type="tel"
+                              value={editForm.phone}
+                              onChange={(e) => setEditForm({ ...editForm, phone: e.target.value })}
+                              placeholder="No. Telefon"
+                              className="w-full bg-cream-50 border border-sand-300 focus:border-mist-400 text-ink-900 text-xs rounded-lg px-2.5 py-1.5 outline-none"
+                            />
+                            <input
+                              type="email"
+                              value={editForm.email}
+                              onChange={(e) => setEditForm({ ...editForm, email: e.target.value })}
+                              placeholder="Emel"
+                              className="w-full bg-cream-50 border border-sand-300 focus:border-mist-400 text-ink-900 text-xs rounded-lg px-2.5 py-1.5 outline-none"
+                            />
+                            {participantEditError && <p className="text-[10px] text-clay-500">{participantEditError}</p>}
+                            <div className="flex items-center gap-2">
+                              <button
+                                onClick={() => handleSaveParticipant(p)}
+                                disabled={savingParticipant}
+                                className="px-3 py-1.5 bg-mist-500 hover:bg-mist-600 text-white text-xs font-bold rounded-lg disabled:opacity-60"
+                              >
+                                {savingParticipant ? '...' : 'Simpan'}
+                              </button>
+                              <button
+                                onClick={() => setEditingParticipantId(null)}
+                                className="px-3 py-1.5 bg-cream-50 hover:bg-cream-200 text-ink-500 text-xs font-bold rounded-lg"
+                              >
+                                Batal
+                              </button>
+                            </div>
+                          </div>
+                        ) : (
+                          <div className="pl-12 space-y-1 text-[11px] text-ink-500">
+                            <div className="flex items-center gap-1.5">
+                              <Phone className="w-3 h-3 text-ink-300 shrink-0" />
+                              <span>{p.phone || 'Tiada nombor telefon'}</span>
+                            </div>
+                            <div className="flex items-center gap-1.5">
+                              <Mail className="w-3 h-3 text-ink-300 shrink-0" />
+                              <span className="truncate">{p.contact_email || 'Tiada emel'}</span>
+                            </div>
+                          </div>
+                        )}
                       </div>
                     ))
                   )}
                 </div>
 
                 <p className="text-[11px] text-ink-500">
-                  Nota: Reset PIN menjana kata laluan 6-digit baru serta-merta. Kata laluan lama tidak lagi sah.
+                  Nota: Reset PIN menjana kata laluan 6-digit baru serta-merta. Padam akaun turut memadam semua rekod kemajuan dan tidak boleh diundur.
                 </p>
               </div>
             )}
