@@ -1,12 +1,8 @@
 import React, { useState } from 'react';
-import { registerUser, loginUser } from '../../lib/supabase';
+import { registerUser, loginUser, requestPasswordReset } from '../../lib/supabase';
 import { UserProfile } from '../../types';
 import { soundManager } from '../../lib/audio';
 import { User, Lock, Phone, Sparkles, Key, CheckCircle2, Copy, AlertCircle, ArrowRight, X, GraduationCap, Heart, RefreshCw, HelpCircle, Send, ArrowLeft, Mail, School } from 'lucide-react';
-
-// Admin support inbox for "Forgot Password" requests. Change this to the real
-// admin email address before going live.
-const ADMIN_SUPPORT_EMAIL = 'admin@eduquest.example';
 
 interface AuthModalProps {
   isOpen: boolean;
@@ -30,9 +26,14 @@ export const AuthModal: React.FC<AuthModalProps> = ({ isOpen, onClose, onSuccess
   const [errorMsg, setErrorMsg] = useState('');
   const [loading, setLoading] = useState(false);
 
-  const [forgotName, setForgotName] = useState('');
   const [forgotLoginId, setForgotLoginId] = useState('');
-  const [forgotSent, setForgotSent] = useState(false);
+  const [forgotPhone, setForgotPhone] = useState('');
+  const [forgotNewPassword, setForgotNewPassword] = useState('');
+  const [forgotConfirmPassword, setForgotConfirmPassword] = useState('');
+  const [forgotStep, setForgotStep] = useState<'form' | 'success'>('form');
+  const [forgotLoading, setForgotLoading] = useState(false);
+  const [forgotError, setForgotError] = useState('');
+  const [forgotResult, setForgotResult] = useState<{ emailSent?: boolean; hasParentEmail?: boolean }>({});
 
   const [registeredProfile, setRegisteredProfile] = useState<UserProfile | null>(null);
   const [registeredId, setRegisteredId] = useState<string | null>(null);
@@ -134,18 +135,33 @@ export const AuthModal: React.FC<AuthModalProps> = ({ isOpen, onClose, onSuccess
     }
   };
 
-  const handleForgotSubmit = (e: React.FormEvent) => {
+  const handleForgotResetSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!forgotName.trim() || !forgotLoginId.trim()) return;
+    if (!forgotLoginId.trim() || !forgotPhone.trim()) return;
+
+    if (forgotNewPassword.length < 6) {
+      setForgotError('Kata laluan baru mesti sekurang-kurangnya 6 aksara.');
+      return;
+    }
+    if (forgotNewPassword !== forgotConfirmPassword) {
+      setForgotError('Kata laluan baru dan pengesahan tidak sepadan.');
+      return;
+    }
 
     soundManager.playClick();
+    setForgotLoading(true);
+    setForgotError('');
 
-    const subject = `Permintaan Reset Kata Laluan — ${forgotLoginId.trim().toUpperCase()}`;
-    const body = `Assalamualaikum Admin,\n\nSaya lupa kata laluan akaun EduQuest saya.\n\nNama: ${forgotName.trim()}\nID Username: ${forgotLoginId.trim().toUpperCase()}\n\nSila bantu reset kata laluan saya. Terima kasih.`;
-    const mailtoUrl = `mailto:${ADMIN_SUPPORT_EMAIL}?subject=${encodeURIComponent(subject)}&body=${encodeURIComponent(body)}`;
+    const res = await requestPasswordReset(forgotLoginId.trim(), forgotPhone.trim(), forgotNewPassword);
+    setForgotLoading(false);
 
-    window.location.href = mailtoUrl;
-    setForgotSent(true);
+    if (res.success) {
+      soundManager.playLevelUp();
+      setForgotResult({ emailSent: res.emailSent, hasParentEmail: res.hasParentEmail });
+      setForgotStep('success');
+    } else {
+      setForgotError(res.error || 'Gagal tukar kata laluan. Sila cuba lagi.');
+    }
   };
 
   const handleQuickDemo = async () => {
@@ -560,17 +576,36 @@ export const AuthModal: React.FC<AuthModalProps> = ({ isOpen, onClose, onSuccess
                   <span>Kembali ke Log Masuk</span>
                 </button>
 
-                {forgotSent ? (
+                {forgotStep === 'success' ? (
                   <div className="text-center space-y-3 py-4">
                     <div className="w-14 h-14 bg-sage-100 border-2 border-sage-300 text-sage-600 rounded-2xl flex items-center justify-center mx-auto">
                       <CheckCircle2 className="w-7 h-7" />
                     </div>
                     <div>
-                      <h3 className="text-base font-display font-bold text-ink-900">Permintaan Dihantar!</h3>
+                      <h3 className="text-base font-display font-bold text-ink-900">Kata Laluan Berjaya Ditukar!</h3>
                       <p className="text-xs text-ink-500 mt-1 max-w-xs mx-auto">
-                        Aplikasi emel anda patut terbuka dengan mesej sedia ditulis. Jika tidak terbuka, hubungi admin terus dan berikan Nama &amp; ID Username anda.
+                        {forgotResult.hasParentEmail
+                          ? forgotResult.emailSent
+                            ? 'Emel makluman telah dihantar kepada ibu bapa (tanpa memaparkan kata laluan).'
+                            : 'Kata laluan berjaya ditukar, tapi emel makluman kepada ibu bapa gagal dihantar. Boleh maklumkan secara lisan.'
+                          : 'Kata laluan berjaya ditukar. Emel ibu bapa belum didaftarkan untuk akaun ini, jadi tiada makluman dihantar.'}
                       </p>
                     </div>
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setMode('login');
+                        setLoginIdInput(forgotLoginId.trim().toUpperCase());
+                        setForgotStep('form');
+                        setForgotLoginId('');
+                        setForgotPhone('');
+                        setForgotNewPassword('');
+                        setForgotConfirmPassword('');
+                      }}
+                      className="w-full py-3 px-4 bg-mist-500 hover:bg-mist-600 text-white font-bold rounded-xl text-sm"
+                    >
+                      Log Masuk Sekarang
+                    </button>
                   </div>
                 ) : (
                   <>
@@ -580,26 +615,11 @@ export const AuthModal: React.FC<AuthModalProps> = ({ isOpen, onClose, onSuccess
                       </div>
                       <h3 className="text-sm font-display font-bold text-ink-900">Lupa Kata Laluan?</h3>
                       <p className="text-xs text-ink-500 max-w-xs mx-auto">
-                        Masukkan nama dan ID Username anda — kami akan hantar terus kepada admin untuk bantu reset.
+                        Sahkan dengan nombor telefon ibu bapa yang didaftarkan pada akaun ini, kemudian tetapkan kata laluan baru terus.
                       </p>
                     </div>
 
-                    <form onSubmit={handleForgotSubmit} className="space-y-4">
-                      <div>
-                        <label className="block text-xs font-bold text-ink-700 mb-1.5">Nama Penuh</label>
-                        <div className="relative">
-                          <User className="w-4 h-4 text-ink-300 absolute left-3.5 top-3.5" />
-                          <input
-                            type="text"
-                            value={forgotName}
-                            onChange={(e) => setForgotName(e.target.value)}
-                            placeholder="Contoh: Ahmad Zaki"
-                            className="w-full bg-cream-50 border border-sand-300 focus:border-honey-400 text-ink-900 text-sm rounded-xl pl-10 pr-4 py-3 outline-none transition-colors"
-                            required
-                          />
-                        </div>
-                      </div>
-
+                    <form onSubmit={handleForgotResetSubmit} className="space-y-4">
                       <div>
                         <label className="block text-xs font-bold text-ink-700 mb-1.5">ID Username / Login ID</label>
                         <div className="relative">
@@ -615,12 +635,71 @@ export const AuthModal: React.FC<AuthModalProps> = ({ isOpen, onClose, onSuccess
                         </div>
                       </div>
 
+                      <div>
+                        <label className="block text-xs font-bold text-ink-700 mb-1.5">No. Telefon Ibu Bapa (Pengesahan)</label>
+                        <div className="relative">
+                          <Phone className="w-4 h-4 text-ink-300 absolute left-3.5 top-3.5" />
+                          <input
+                            type="tel"
+                            value={forgotPhone}
+                            onChange={(e) => setForgotPhone(e.target.value)}
+                            placeholder="Nombor yang didaftarkan pada akaun"
+                            className="w-full bg-cream-50 border border-sand-300 focus:border-honey-400 text-ink-900 text-sm rounded-xl pl-10 pr-4 py-3 outline-none transition-colors"
+                            required
+                          />
+                        </div>
+                      </div>
+
+                      <div>
+                        <label className="block text-xs font-bold text-ink-700 mb-1.5">Kata Laluan Baru</label>
+                        <div className="relative">
+                          <Lock className="w-4 h-4 text-ink-300 absolute left-3.5 top-3.5" />
+                          <input
+                            type="password"
+                            value={forgotNewPassword}
+                            onChange={(e) => setForgotNewPassword(e.target.value)}
+                            placeholder="Sekurang-kurangnya 6 aksara"
+                            className="w-full bg-cream-50 border border-sand-300 focus:border-honey-400 text-ink-900 text-sm rounded-xl pl-10 pr-4 py-3 outline-none transition-colors"
+                            required
+                          />
+                        </div>
+                      </div>
+
+                      <div>
+                        <label className="block text-xs font-bold text-ink-700 mb-1.5">Sahkan Kata Laluan Baru</label>
+                        <div className="relative">
+                          <Lock className="w-4 h-4 text-ink-300 absolute left-3.5 top-3.5" />
+                          <input
+                            type="password"
+                            value={forgotConfirmPassword}
+                            onChange={(e) => setForgotConfirmPassword(e.target.value)}
+                            placeholder="Taip semula kata laluan baru"
+                            className="w-full bg-cream-50 border border-sand-300 focus:border-honey-400 text-ink-900 text-sm rounded-xl pl-10 pr-4 py-3 outline-none transition-colors"
+                            required
+                          />
+                        </div>
+                      </div>
+
+                      {forgotError && (
+                        <div className="flex items-start gap-2 p-3 bg-clay-100 border border-clay-200 rounded-xl">
+                          <AlertCircle className="w-4 h-4 text-clay-500 shrink-0 mt-0.5" />
+                          <p className="text-xs text-clay-600">{forgotError}</p>
+                        </div>
+                      )}
+
                       <button
                         type="submit"
-                        className="w-full py-3.5 px-4 bg-honey-400 hover:bg-honey-500 text-white font-bold rounded-xl shadow-sm transition-colors text-sm flex items-center justify-center gap-2"
+                        disabled={forgotLoading}
+                        className="w-full py-3.5 px-4 bg-honey-400 hover:bg-honey-500 text-white font-bold rounded-xl shadow-sm transition-colors text-sm flex items-center justify-center gap-2 disabled:opacity-60"
                       >
-                        <Send className="w-4 h-4" />
-                        <span>Hantar Kepada Admin</span>
+                        {forgotLoading ? (
+                          <span>Mengesahkan...</span>
+                        ) : (
+                          <>
+                            <Send className="w-4 h-4" />
+                            <span>Tukar Kata Laluan</span>
+                          </>
+                        )}
                       </button>
                     </form>
                   </>
