@@ -918,8 +918,11 @@ export async function fetchParentChildrenData(phoneInput: string): Promise<{
   }
 
   const matchedChildrenMap = new Map<string, UserProfile>();
+  const attemptsMap: Record<string, UserAttempt[]> = {};
+  const progressMap: Record<string, UserProgress[]> = {};
 
-  // 1. Check local users list
+  // 1. Check local users list first (same-device, works even if the Edge
+  // Function call below fails for any reason).
   const localUsersList: UserProfile[] = JSON.parse(localStorage.getItem(LOCAL_USERS_LIST_KEY) || '[]');
   const currentActiveUser = getCurrentUser();
   const allLocal = [...localUsersList];
@@ -932,37 +935,59 @@ export async function fetchParentChildrenData(phoneInput: string): Promise<{
       const uPhoneClean = u.phone.replace(/[^0-9]/g, '');
       if (uPhoneClean && (uPhoneClean.includes(cleanPhone) || cleanPhone.includes(uPhoneClean))) {
         matchedChildrenMap.set(u.id, u);
+        progressMap[u.id] = getUserProgressList(u.id);
+        attemptsMap[u.id] = getUserAttemptsList(u.id);
       }
     }
   }
 
-  // 2. Query Supabase users if configured
+  // 2. Ask the fetch-parent-data Edge Function — it runs with the service
+  // role, so it works regardless of whether this browser has a live Supabase
+  // Auth session, and it bypasses RLS deliberately (progress/attempts stay
+  // RLS-protected for any other, non-Edge-Function access path).
   if (isSupabaseConfigured && supabase) {
     try {
-      const { data: dbUsers } = await supabase
-        .from('users')
-        .select('*');
-      
-      if (dbUsers) {
-        for (const dbU of dbUsers) {
-          if (dbU.phone) {
-            const dbPhoneClean = String(dbU.phone).replace(/[^0-9]/g, '');
-            if (dbPhoneClean && (dbPhoneClean.includes(cleanPhone) || cleanPhone.includes(dbPhoneClean))) {
-              const childProfile: UserProfile = {
-                id: dbU.id,
-                name: dbU.name,
-                login_id: dbU.login_id,
-                phone: dbU.phone,
-                coin: dbU.coin ?? 100,
-                xp: dbU.xp ?? 0,
-                level: dbU.level ?? 1,
-                created_at: dbU.created_at || new Date().toISOString(),
-                streak_days: 1,
-              };
-              matchedChildrenMap.set(childProfile.id, childProfile);
+      const { data, error } = await supabase.functions.invoke('fetch-parent-data', {
+        body: { phone: phoneInput },
+      });
+
+      if (!error && data?.success) {
+        for (const dbU of data.children || []) {
+          const childProfile: UserProfile = {
+            id: dbU.id,
+            name: dbU.name,
+            login_id: dbU.login_id,
+            phone: dbU.phone,
+            coin: dbU.coin ?? 100,
+            xp: dbU.xp ?? 0,
+            level: dbU.level ?? 1,
+            created_at: dbU.created_at || new Date().toISOString(),
+            streak_days: 1,
+          };
+          matchedChildrenMap.set(childProfile.id, childProfile);
+
+          const remoteProg: UserProgress[] = data.progressMap?.[dbU.id] || [];
+          const localProg = progressMap[dbU.id] || [];
+          const mergedProg = [...localProg];
+          for (const rp of remoteProg) {
+            if (!mergedProg.some((lp) => lp.section_id === rp.section_id)) {
+              mergedProg.push(rp);
             }
           }
+          progressMap[dbU.id] = mergedProg;
+
+          const remoteAtt: UserAttempt[] = data.attemptsMap?.[dbU.id] || [];
+          const localAtt = attemptsMap[dbU.id] || [];
+          const mergedAtt = [...localAtt];
+          for (const ra of remoteAtt) {
+            if (!mergedAtt.some((la) => la.id === ra.id)) {
+              mergedAtt.push(ra);
+            }
+          }
+          attemptsMap[dbU.id] = mergedAtt;
         }
+      } else if (error) {
+        console.warn('fetch-parent-data invoke failed:', error);
       }
     } catch (err) {
       console.warn('Supabase fetch parent children failed:', err);
@@ -970,57 +995,6 @@ export async function fetchParentChildrenData(phoneInput: string): Promise<{
   }
 
   const children = Array.from(matchedChildrenMap.values());
-  const attemptsMap: Record<string, UserAttempt[]> = {};
-  const progressMap: Record<string, UserProgress[]> = {};
-
-  // For each child, get local + remote attempts & progress
-  for (const child of children) {
-    // Progress
-    const localProg = getUserProgressList(child.id);
-    progressMap[child.id] = localProg;
-
-    // Attempts
-    const localAtt = getUserAttemptsList(child.id);
-    attemptsMap[child.id] = localAtt;
-
-    // Fetch remote if supabase enabled
-    if (isSupabaseConfigured && supabase) {
-      try {
-        const { data: remoteAtt } = await supabase
-          .from('attempts')
-          .select('*')
-          .eq('user_id', child.id);
-        
-        if (remoteAtt && remoteAtt.length > 0) {
-          const mergedAtt = [...localAtt];
-          for (const ra of remoteAtt) {
-            if (!mergedAtt.some((la) => la.id === ra.id)) {
-              mergedAtt.push(ra);
-            }
-          }
-          attemptsMap[child.id] = mergedAtt;
-        }
-
-        const { data: remoteProg } = await supabase
-          .from('progress')
-          .select('*')
-          .eq('user_id', child.id);
-        
-        if (remoteProg && remoteProg.length > 0) {
-          const mergedProg = [...localProg];
-          for (const rp of remoteProg) {
-            if (!mergedProg.some((lp) => lp.section_id === rp.section_id)) {
-              mergedProg.push(rp);
-            }
-          }
-          progressMap[child.id] = mergedProg;
-        }
-      } catch (err) {
-        console.warn('Supabase fetch child stats error:', err);
-      }
-    }
-  }
-
   return { children, attemptsMap, progressMap };
 }
 
