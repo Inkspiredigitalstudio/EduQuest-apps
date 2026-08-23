@@ -163,6 +163,7 @@ const LOCAL_USER_KEY = 'sppim_local_active_user';
 const LOCAL_USERS_LIST_KEY = 'sppim_local_users_db';
 const LOCAL_PROGRESS_KEY = 'sppim_local_progress';
 const LOCAL_ATTEMPTS_KEY = 'sppim_local_attempts';
+const LOCAL_PKSK_PROGRESS_KEY = 'pksk_local_progress';
 
 // Helper to generate a clean, readable login ID
 export function generateUniqueLoginId(name: string): string {
@@ -1120,6 +1121,430 @@ export async function fetchExamDataFromSupabase(): Promise<{
     console.warn('Failed to fetch exam data from Supabase:', err);
     return null;
   }
+}
+
+// =====================================================================
+// PKSK DATA LAYER — separate tables (pksk_subjects/pksk_papers/
+// pksk_sections/pksk_questions/pksk_choices), separate from SPPIM above.
+// Do NOT reuse fetchExamDataFromSupabase/addQuestionToSupabase/etc. for
+// PKSK content — those target the SPPIM tables only.
+// =====================================================================
+
+export async function fetchPkskExamDataFromSupabase(): Promise<{
+  subjects?: Subject[];
+  papers?: Paper[];
+  sections?: Section[];
+  questions?: Question[];
+} | null> {
+  if (!isSupabaseConfigured || !supabase) return null;
+
+  async function fetchAll<T>(table: string, orderCol?: string): Promise<T[]> {
+    const pageSize = 1000;
+    let from = 0;
+    let all: T[] = [];
+    while (true) {
+      let query = supabase!.from(table).select('*').range(from, from + pageSize - 1);
+      if (orderCol) query = query.order(orderCol, { ascending: true });
+      const { data, error } = await query;
+      if (error) {
+        console.warn(`Supabase fetch ${table} warning:`, error.message);
+        break;
+      }
+      if (!data || data.length === 0) break;
+      all = all.concat(data as T[]);
+      if (data.length < pageSize) break;
+      from += pageSize;
+    }
+    return all;
+  }
+
+  try {
+    const [dbSubjects, dbPapers, dbSections, dbQuestions, dbChoices] = await Promise.all([
+      fetchAll<any>('pksk_subjects'),
+      fetchAll<any>('pksk_papers'),
+      fetchAll<any>('pksk_sections', 'order'),
+      fetchAll<any>('pksk_questions', 'order'),
+      fetchAll<any>('pksk_choices'),
+    ]);
+
+    let resSubjects: Subject[] | undefined;
+    if (dbSubjects && dbSubjects.length > 0) {
+      resSubjects = dbSubjects.map((s) => ({
+        id: s.id,
+        name: s.name,
+        icon: s.icon || 'BookOpen',
+        description: s.description || '',
+        status: s.status || 'active',
+        color: s.color || 'from-mist-400 to-mist-500',
+      }));
+    }
+
+    let resPapers: Paper[] | undefined;
+    if (dbPapers && dbPapers.length > 0) {
+      resPapers = dbPapers.map((p) => ({
+        id: p.id,
+        subject_id: p.subject_id,
+        year: p.year,
+        title: p.title,
+        status: p.status || 'active',
+      }));
+    }
+
+    let resSections: Section[] | undefined;
+    if (dbSections && dbSections.length > 0) {
+      resSections = dbSections.map((sec) => ({
+        id: sec.id,
+        paper_id: sec.paper_id,
+        name: sec.name,
+        title: sec.title || `Bahagian ${sec.name}`,
+        order: sec.order ?? 1,
+      }));
+    }
+
+    // IMPORTANT: unlike the SPPIM mapping above, PKSK questions/choices carry
+    // extra fields (answer_format, dimensi_personaliti, aras_kesukaran,
+    // nilai_skala) that must be explicitly selected here — omitting them from
+    // this mapping silently drops the data even though select('*') fetched it.
+    let resQuestions: Question[] | undefined;
+    if (dbQuestions && dbQuestions.length > 0) {
+      const choicesMap = new Map<string, Choice[]>();
+      if (dbChoices) {
+        for (const c of dbChoices) {
+          const list = choicesMap.get(c.question_id) || [];
+          list.push({
+            id: c.id,
+            question_id: c.question_id,
+            option_text: c.option_text,
+            is_correct: Boolean(c.is_correct),
+            nilai_skala: c.nilai_skala ?? undefined,
+          });
+          choicesMap.set(c.question_id, list);
+        }
+      }
+
+      resQuestions = dbQuestions.map((q) => ({
+        id: q.id,
+        section_id: q.section_id,
+        question_text: q.question_text,
+        explanation: q.explanation || '',
+        order: q.order ?? 1,
+        choices: choicesMap.get(q.id) || [],
+        image_url: q.image_url || undefined,
+        answer_format: (q.answer_format || 'mcq') as Question['answer_format'],
+        dimensi_personaliti: q.dimensi_personaliti || undefined,
+        aras_kesukaran: q.aras_kesukaran ?? undefined,
+        source_set: q.source_set || undefined,
+      }));
+    }
+
+    return {
+      subjects: resSubjects,
+      papers: resPapers,
+      sections: resSections,
+      questions: resQuestions,
+    };
+  } catch (err) {
+    console.warn('Failed to fetch PKSK exam data from Supabase:', err);
+    return null;
+  }
+}
+
+export async function addPkskQuestionToSupabase(
+  sectionId: string,
+  questionText: string,
+  explanation: string,
+  choices: { text: string; correct: boolean; nilai_skala?: number }[],
+  order: number = 1,
+  answerFormat: Question['answer_format'] = 'mcq',
+  dimensiPersonaliti?: string,
+  arasKesukaran?: 1 | 2 | 3,
+  imageUrl?: string
+): Promise<Question | null> {
+  if (!isSupabaseConfigured || !supabase) return null;
+  try {
+    const { data: qData, error: qErr } = await supabase
+      .from('pksk_questions')
+      .insert({
+        section_id: sectionId,
+        question_text: questionText,
+        explanation,
+        order,
+        image_url: imageUrl || null,
+        answer_format: answerFormat || 'mcq',
+        dimensi_personaliti: dimensiPersonaliti || null,
+        aras_kesukaran: arasKesukaran ?? null,
+      })
+      .select()
+      .single();
+    if (qErr || !qData) throw qErr || new Error('Tiada data dikembalikan.');
+
+    const choiceRows = choices.map((c) => ({
+      question_id: qData.id,
+      option_text: c.text,
+      is_correct: c.correct,
+      nilai_skala: c.nilai_skala ?? null,
+    }));
+    const { data: cData, error: cErr } = await supabase.from('pksk_choices').insert(choiceRows).select();
+    if (cErr) throw cErr;
+
+    return {
+      id: qData.id,
+      section_id: sectionId,
+      question_text: questionText,
+      explanation,
+      order: qData.order ?? order,
+      choices: (cData || []).map((c: any) => ({
+        id: c.id,
+        question_id: c.question_id,
+        option_text: c.option_text,
+        is_correct: Boolean(c.is_correct),
+        nilai_skala: c.nilai_skala ?? undefined,
+      })),
+      image_url: qData.image_url || imageUrl || undefined,
+      answer_format: (qData.answer_format || answerFormat) as Question['answer_format'],
+      dimensi_personaliti: qData.dimensi_personaliti || dimensiPersonaliti || undefined,
+      aras_kesukaran: qData.aras_kesukaran ?? arasKesukaran ?? undefined,
+    };
+  } catch (e) {
+    console.warn('Failed to add PKSK question to Supabase:', e);
+    return null;
+  }
+}
+
+export async function updatePkskQuestionInSupabase(question: Question): Promise<boolean> {
+  if (!isSupabaseConfigured || !supabase) return false;
+  try {
+    const { error: qErr } = await supabase
+      .from('pksk_questions')
+      .update({
+        section_id: question.section_id,
+        question_text: question.question_text,
+        explanation: question.explanation,
+        order: question.order,
+        image_url: question.image_url || null,
+        answer_format: question.answer_format || 'mcq',
+        dimensi_personaliti: question.dimensi_personaliti || null,
+        aras_kesukaran: question.aras_kesukaran ?? null,
+      })
+      .eq('id', question.id);
+    if (qErr) throw qErr;
+
+    // Simplest reliable approach: replace all choices for this question
+    const { error: delErr } = await supabase.from('pksk_choices').delete().eq('question_id', question.id);
+    if (delErr) throw delErr;
+
+    const choiceRows = question.choices.map((c) => ({
+      question_id: question.id,
+      option_text: c.option_text,
+      is_correct: c.is_correct,
+      nilai_skala: c.nilai_skala ?? null,
+    }));
+    const { error: insErr } = await supabase.from('pksk_choices').insert(choiceRows);
+    if (insErr) throw insErr;
+
+    return true;
+  } catch (e) {
+    console.warn('Failed to update PKSK question in Supabase:', e);
+    return false;
+  }
+}
+
+export async function deletePkskQuestionFromSupabase(questionId: string): Promise<boolean> {
+  if (!isSupabaseConfigured || !supabase) return false;
+  try {
+    // pksk_choices reference question_id without ON DELETE CASCADE, so clear
+    // them explicitly first (same pattern as deleteQuestionFromSupabase).
+    await supabase.from('pksk_choices').delete().eq('question_id', questionId);
+    const { error } = await supabase.from('pksk_questions').delete().eq('id', questionId);
+    if (error) throw error;
+    return true;
+  } catch (e) {
+    console.warn('Failed to delete PKSK question from Supabase:', e);
+    return false;
+  }
+}
+
+export async function bulkAddPkskQuestionsToSupabase(
+  items: {
+    section_id: string;
+    question_text: string;
+    explanation: string;
+    answer_format?: Question['answer_format'];
+    dimensi_personaliti?: string;
+    aras_kesukaran?: 1 | 2 | 3;
+    image_url?: string;
+    choices: { text: string; correct: boolean; nilai_skala?: number }[];
+  }[]
+): Promise<Question[]> {
+  if (!isSupabaseConfigured || !supabase) return [];
+  const results: Question[] = [];
+  for (const item of items) {
+    const q = await addPkskQuestionToSupabase(
+      item.section_id,
+      item.question_text,
+      item.explanation,
+      item.choices,
+      1,
+      item.answer_format || 'mcq',
+      item.dimensi_personaliti,
+      item.aras_kesukaran,
+      item.image_url
+    );
+    if (q) results.push(q);
+  }
+  return results;
+}
+
+// ------------------------- PKSK attempt & scoring -------------------------
+// Writes to exam_attempts -> exam_attempt_questions -> pksk_results, NOT
+// saveAttempt/updateUserStats (those are the SPPIM coin/XP reward path,
+// which PKSK deliberately does not use — see plan doc #3c).
+
+// Confirmed by Ieda: Bahagian A = Kecerdasan Insaniah (0.2), Bahagian B =
+// Kecerdasan Intelek & Pengetahuan Am (0.7), Bahagian C = Artikulasi
+// Penulisan (0.1). Bahagian A/B are objective (this module); Bahagian C is
+// the essay module (Track B) and is written to markah_bahagian_c elsewhere
+// once that module exists — this function never writes that column itself.
+const PKSK_BAHAGIAN_WEIGHT = { a: 0.2, b: 0.7, c: 0.1 } as const;
+
+// Subject -> Bahagian mapping (confirmed): "Kecerdasan Insaniah" is
+// Bahagian A on its own; "Pengetahuan Am" and "Psikometrik" both count
+// toward Bahagian B ("Kecerdasan Intelek & Pengetahuan Am"). Artikulasi
+// Penulisan (Bahagian C) isn't a pksk_subjects row at all — it's the
+// separate essay module.
+function pkskSubjectToBahagianCol(subjectName: string): 'markah_bahagian_a' | 'markah_bahagian_b' | null {
+  const name = subjectName.trim().toLowerCase();
+  if (name === 'kecerdasan insaniah') return 'markah_bahagian_a';
+  if (name === 'pengetahuan am' || name === 'psikometrik') return 'markah_bahagian_b';
+  return null;
+}
+
+export async function savePkskAttempt(params: {
+  user_id: string;
+  tingkatan: string; // exam_attempts.tingkatan is NOT NULL — pass the student's Tahun 6 / Tingkatan 3 selection
+  subject: Subject;
+  section: Section;
+  questions: Question[];
+  answersMap: Record<string, string>; // question_id -> choice_id
+}): Promise<{ attempt_id: string; percent: number } | null> {
+  if (!isSupabaseConfigured || !supabase) return null;
+  try {
+    const { user_id, tingkatan, subject, section, questions, answersMap } = params;
+
+    const bahagianCol = pkskSubjectToBahagianCol(subject.name);
+    if (!bahagianCol) {
+      console.warn(`PKSK subject "${subject.name}" doesn't map to a known Bahagian (A/B) — skipping pksk_results write.`);
+      return null;
+    }
+
+    const { data: attemptData, error: attemptErr } = await supabase
+      .from('exam_attempts')
+      .insert({
+        user_id,
+        module: 'PKSK',
+        tingkatan,
+        started_at: new Date().toISOString(),
+        completed_at: new Date().toISOString(),
+      })
+      .select()
+      .single();
+    if (attemptErr || !attemptData) throw attemptErr || new Error('Tiada attempt data dikembalikan.');
+    const attemptId = attemptData.id;
+
+    const answerRows = questions.map((q) => {
+      const choiceId = answersMap[q.id];
+      const choice = q.choices.find((c) => c.id === choiceId);
+      return {
+        attempt_id: attemptId,
+        question_id: q.id,
+        choice_id: choiceId || null,
+        is_correct: choice ? Boolean(choice.is_correct) : false,
+      };
+    });
+    if (answerRows.length > 0) {
+      const { error: aqErr } = await supabase.from('exam_attempt_questions').insert(answerRows);
+      if (aqErr) throw aqErr;
+    }
+
+    const correctCount = answerRows.filter((r) => r.is_correct).length;
+    const percent = questions.length > 0 ? Math.round((correctCount / questions.length) * 100) : 0;
+
+    // jumlah_markah (weighted A+B+C) can only be computed once all three
+    // Bahagian have a score — Bahagian C comes from the separate Artikulasi
+    // (essay) module, which doesn't exist yet, so this is always null for
+    // now. Best score per Bahagian (not latest) matches the existing
+    // best_score convention used for SPPIM progress above.
+    let jumlahMarkah: number | null = null;
+    try {
+      const { data: priorAttempts } = await supabase
+        .from('exam_attempts')
+        .select('id')
+        .eq('user_id', user_id)
+        .eq('module', 'PKSK');
+      const attemptIds = (priorAttempts || []).map((a: any) => a.id);
+      if (attemptIds.length > 0) {
+        const { data: priorResults } = await supabase
+          .from('pksk_results')
+          .select('markah_bahagian_a, markah_bahagian_b, markah_bahagian_c')
+          .in('attempt_id', attemptIds);
+        let bestA: number | null = bahagianCol === 'markah_bahagian_a' ? percent : null;
+        let bestB: number | null = bahagianCol === 'markah_bahagian_b' ? percent : null;
+        let bestC: number | null = null;
+        for (const r of priorResults || []) {
+          if (typeof r.markah_bahagian_a === 'number') bestA = Math.max(bestA ?? 0, r.markah_bahagian_a);
+          if (typeof r.markah_bahagian_b === 'number') bestB = Math.max(bestB ?? 0, r.markah_bahagian_b);
+          if (typeof r.markah_bahagian_c === 'number') bestC = Math.max(bestC ?? 0, r.markah_bahagian_c);
+        }
+        if (bestA !== null && bestB !== null && bestC !== null) {
+          jumlahMarkah = Math.round(
+            bestA * PKSK_BAHAGIAN_WEIGHT.a + bestB * PKSK_BAHAGIAN_WEIGHT.b + bestC * PKSK_BAHAGIAN_WEIGHT.c
+          );
+        }
+      }
+    } catch (e) {
+      console.warn('Failed to compute PKSK jumlah_markah (non-fatal, left null):', e);
+    }
+
+    // gred (letter grade bands) is intentionally left unset — no grading
+    // scale/bands have been confirmed yet.
+    const { error: resultErr } = await supabase.from('pksk_results').insert({
+      attempt_id: attemptId,
+      [bahagianCol]: percent,
+      ...(jumlahMarkah !== null ? { jumlah_markah: jumlahMarkah } : {}),
+    });
+    if (resultErr) throw resultErr;
+
+    // Local progress cache — same read-from-localStorage pattern the SPPIM
+    // Dashboard's "Sambung Belajar" grid relies on (see saveAttempt /
+    // getUserProgressList above), so PKSK progress can drive that grid
+    // without an extra Supabase round-trip on every dashboard load.
+    const existingProgress: UserProgress[] = JSON.parse(localStorage.getItem(LOCAL_PKSK_PROGRESS_KEY) || '[]');
+    const progIdx = existingProgress.findIndex((p) => p.section_id === section.id && p.user_id === user_id);
+    if (progIdx >= 0) {
+      existingProgress[progIdx].best_score = Math.max(existingProgress[progIdx].best_score, percent);
+      existingProgress[progIdx].is_completed = true;
+    } else {
+      existingProgress.push({
+        id: `pksk-prog-${Date.now()}`,
+        user_id,
+        section_id: section.id,
+        best_score: percent,
+        is_completed: true,
+        total_questions: questions.length,
+      });
+    }
+    localStorage.setItem(LOCAL_PKSK_PROGRESS_KEY, JSON.stringify(existingProgress));
+
+    return { attempt_id: attemptId, percent };
+  } catch (e) {
+    console.warn('Failed to save PKSK attempt to Supabase:', e);
+    return null;
+  }
+}
+
+export function getPkskProgressList(userId: string): UserProgress[] {
+  const existingProgress: UserProgress[] = JSON.parse(localStorage.getItem(LOCAL_PKSK_PROGRESS_KEY) || '[]');
+  return existingProgress.filter((p) => p.user_id === userId);
 }
 
 // ---------------- LOCAL & SUPABASE LINK SYSTEM ----------------

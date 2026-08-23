@@ -9,12 +9,17 @@ interface ExamScreenProps {
   user: UserProfile | null;
   onCompleteExam: (score: number, total: number, coinsEarned: number, xpEarned: number, answersMap: Record<string, string>) => void;
   onCancel: () => void;
+  explanationLabel?: string;
 }
 
 function shuffleQuestionsChoices(questions: Question[]): Question[] {
   let consecutiveACount = 0;
 
   return questions.map((q) => {
+    // Scale-style formats (Likert, frequency, etc.) must keep their original
+    // order (e.g. Sangat Setuju -> Sangat Tidak Setuju) — only MCQ items get
+    // shuffled.
+    if (q.answer_format && q.answer_format !== 'mcq') return q;
     if (!q.choices || q.choices.length <= 1) return q;
 
     const correctChoice = q.choices.find((c) => c.is_correct);
@@ -53,7 +58,14 @@ function shuffleQuestionsChoices(questions: Question[]): Question[] {
   });
 }
 
-export const ExamScreen: React.FC<ExamScreenProps> = ({ section, questions: rawQuestions, user, onCompleteExam, onCancel }) => {
+export const ExamScreen: React.FC<ExamScreenProps> = ({
+  section,
+  questions: rawQuestions,
+  user,
+  onCompleteExam,
+  onCancel,
+  explanationLabel = 'Penerangan Hukum & Dalil:',
+}) => {
   const questions = useMemo(() => shuffleQuestionsChoices(rawQuestions), [rawQuestions]);
 
   const [currentIndex, setCurrentIndex] = useState(0);
@@ -286,7 +298,7 @@ export const ExamScreen: React.FC<ExamScreenProps> = ({ section, questions: rawQ
           }`}>
             <div className="flex items-center gap-2 font-bold text-sm">
               <BookOpen className="w-4 h-4 text-mist-600" />
-              <span>Penerangan Hukum &amp; Dalil:</span>
+              <span>{explanationLabel}</span>
             </div>
             <p className="text-xs sm:text-sm leading-relaxed text-ink-700">
               {currentQuestion.explanation}

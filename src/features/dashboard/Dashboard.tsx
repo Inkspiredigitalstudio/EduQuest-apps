@@ -2,6 +2,7 @@ import React from 'react';
 import { Subject, UserProfile, DailyMission, Paper, Section, UserProgress } from '../../types';
 import { soundManager } from '../../lib/audio';
 import { PendingLinksWidget } from './PendingLinksWidget';
+import { SubjectGrid } from './SubjectGrid';
 import {
   BookOpen,
   Heart,
@@ -12,9 +13,9 @@ import {
   ArrowRight,
   Target,
   Coins,
-  Star,
   Swords,
   Play,
+  PenSquare,
 } from 'lucide-react';
 
 interface DashboardProps {
@@ -22,6 +23,10 @@ interface DashboardProps {
   subjects: Subject[];
   papers?: Paper[];
   sections?: Section[];
+  pkskSubjects?: Subject[];
+  pkskPapers?: Paper[];
+  pkskSections?: Section[];
+  pkskUserProgress?: UserProgress[];
   userProgress?: UserProgress[];
   dailyMissions: DailyMission[];
   isContentLoading?: boolean;
@@ -33,6 +38,7 @@ interface DashboardProps {
   onOpenBattle?: () => void;
   onOpenAchievements?: () => void;
   onOpenSocial?: () => void;
+  onOpenArticulation?: () => void;
 }
 
 const ICON_MAP: Record<string, React.FC<{ className?: string }>> = {
@@ -42,32 +48,68 @@ const ICON_MAP: Record<string, React.FC<{ className?: string }>> = {
   Compass,
 };
 
-const getColorFamily = (colorClass: string): 'mist' | 'sage' | 'honey' | 'clay' => {
-  if (colorClass.includes('sage')) return 'sage';
-  if (colorClass.includes('honey')) return 'honey';
-  if (colorClass.includes('clay')) return 'clay';
-  return 'mist';
-};
+// Computes the list of papers currently IN-PROGRESS for one module, sorted
+// by most recent activity. Shared by SPPIM and PKSK so "Sambung Belajar" can
+// merge both without duplicating this logic.
+function computeInProgressPapers(
+  papers: Paper[] | undefined,
+  sections: Section[] | undefined,
+  subjects: Subject[],
+  userProgress: UserProgress[] | undefined,
+  moduleLabel: 'SPPIM' | 'PKSK'
+) {
+  if (!papers || !sections) return [];
 
-const CARD_TINT: Record<string, string> = {
-  mist: 'bg-mist-100 hover:bg-mist-200/70 border-mist-200 hover:border-mist-300',
-  sage: 'bg-sage-100 hover:bg-sage-200/70 border-sage-200 hover:border-sage-300',
-  honey: 'bg-honey-100 hover:bg-honey-200/70 border-honey-200 hover:border-honey-300',
-  clay: 'bg-clay-100 hover:bg-clay-200/70 border-clay-200 hover:border-clay-300',
-};
+  const mapped = papers
+    .map((paper) => {
+      const subject = subjects.find((s) => s.id === paper.subject_id);
+      const paperSections = sections
+        .filter((sec) => sec.paper_id === paper.id)
+        .sort((a, b) => a.order - b.order);
 
-const CARD_FOOTER_TEXT: Record<string, string> = {
-  mist: 'text-mist-700 border-mist-200',
-  sage: 'text-sage-600 border-sage-200',
-  honey: 'text-honey-500 border-honey-200',
-  clay: 'text-clay-500 border-clay-200',
-};
+      if (!subject || paperSections.length === 0) return null;
+
+      const totalSections = paperSections.length;
+      let maxProgressIndex = -1;
+      let startedCount = 0;
+      let completedCount = 0;
+
+      paperSections.forEach((sec) => {
+        const idx = userProgress ? userProgress.findIndex((p) => p.section_id === sec.id) : -1;
+        if (idx >= 0) {
+          startedCount++;
+          if (idx > maxProgressIndex) maxProgressIndex = idx;
+          const prog = userProgress![idx];
+          if (prog.is_completed || prog.best_score > 0) completedCount++;
+        }
+      });
+
+      const count = Math.max(startedCount, completedCount);
+      const nextSection =
+        paperSections.find((sec) => {
+          const prog = userProgress?.find((p) => p.section_id === sec.id);
+          return !prog || (!prog.is_completed && prog.best_score === 0);
+        }) || paperSections[0];
+
+      const progressPercent = Math.round((count / totalSections) * 100);
+      const isInProgress = count > 0 && completedCount < totalSections;
+
+      return { moduleLabel, paper, subject, paperSections, totalSections, count, completedCount, nextSection, progressPercent, isInProgress, maxProgressIndex };
+    })
+    .filter((item): item is NonNullable<typeof item> => Boolean(item && item.isInProgress));
+
+  return mapped;
+}
 
 export const Dashboard: React.FC<DashboardProps> = ({
   user,
   subjects,
   papers,
   sections,
+  pkskSubjects,
+  pkskPapers,
+  pkskSections,
+  pkskUserProgress,
   userProgress,
   dailyMissions,
   isContentLoading,
@@ -76,59 +118,23 @@ export const Dashboard: React.FC<DashboardProps> = ({
   onSelectSection,
   onOpenAuth,
   onOpenBattle,
+  onOpenArticulation,
 }) => {
   const [activeModuleTab, setActiveModuleTab] = React.useState<'sppim' | 'pksk' | 'uasa'>('sppim');
 
   const hubModules = [
     { id: 'sppim', name: 'SPPIM', active: true },
-    { id: 'pksk', name: 'PKSK', active: false },
+    { id: 'pksk', name: 'PKSK', active: true },
     { id: 'uasa', name: 'UASA', active: false },
   ];
 
-  // Compute list of papers currently IN-PROGRESS, sorted by most recent activity
+  // Merge in-progress papers from both modules — sorted by most recent
+  // activity, each item tagged with which module it belongs to.
   const inProgressPapers = React.useMemo(() => {
-    if (!papers || !sections) return [];
-
-    const mapped = papers
-      .map((paper) => {
-        const subject = subjects.find((s) => s.id === paper.subject_id);
-        const paperSections = sections
-          .filter((sec) => sec.paper_id === paper.id)
-          .sort((a, b) => a.order - b.order);
-
-        if (!subject || paperSections.length === 0) return null;
-
-        const totalSections = paperSections.length;
-        let maxProgressIndex = -1;
-        let startedCount = 0;
-        let completedCount = 0;
-
-        paperSections.forEach((sec) => {
-          const idx = userProgress ? userProgress.findIndex((p) => p.section_id === sec.id) : -1;
-          if (idx >= 0) {
-            startedCount++;
-            if (idx > maxProgressIndex) maxProgressIndex = idx;
-            const prog = userProgress![idx];
-            if (prog.is_completed || prog.best_score > 0) completedCount++;
-          }
-        });
-
-        const count = Math.max(startedCount, completedCount);
-        const nextSection =
-          paperSections.find((sec) => {
-            const prog = userProgress?.find((p) => p.section_id === sec.id);
-            return !prog || (!prog.is_completed && prog.best_score === 0);
-          }) || paperSections[0];
-
-        const progressPercent = Math.round((count / totalSections) * 100);
-        const isInProgress = count > 0 && completedCount < totalSections;
-
-        return { paper, subject, paperSections, totalSections, count, completedCount, nextSection, progressPercent, isInProgress, maxProgressIndex };
-      })
-      .filter((item): item is NonNullable<typeof item> => Boolean(item && item.isInProgress));
-
-    return mapped.sort((a, b) => b.maxProgressIndex - a.maxProgressIndex);
-  }, [papers, sections, subjects, userProgress]);
+    const sppim = computeInProgressPapers(papers, sections, subjects, userProgress, 'SPPIM');
+    const pksk = computeInProgressPapers(pkskPapers, pkskSections, pkskSubjects || [], pkskUserProgress, 'PKSK');
+    return [...sppim, ...pksk].sort((a, b) => b.maxProgressIndex - a.maxProgressIndex);
+  }, [papers, sections, subjects, userProgress, pkskPapers, pkskSections, pkskSubjects, pkskUserProgress]);
 
   return (
     <div className="space-y-6 pb-24 max-w-5xl mx-auto">
@@ -211,7 +217,12 @@ export const Dashboard: React.FC<DashboardProps> = ({
                   </div>
 
                   <div className="w-full text-left">
-                    <h4 className="text-xs sm:text-sm font-bold text-ink-900 line-clamp-1">
+                    <div className="flex items-center gap-1.5">
+                      <span className="text-[9px] font-bold uppercase tracking-wide text-mist-600 bg-mist-100 px-1.5 py-0.5 rounded-md">
+                        {item.moduleLabel}
+                      </span>
+                    </div>
+                    <h4 className="text-xs sm:text-sm font-bold text-ink-900 line-clamp-1 mt-1">
                       {item.subject.name} ({item.paper.year})
                     </h4>
                     <p className="text-[11px] text-ink-500 font-semibold mt-0.5">
@@ -280,6 +291,30 @@ export const Dashboard: React.FC<DashboardProps> = ({
           })}
         </div>
 
+        {/* Artikulasi Karangan (Bahagian C) has its own data fetching inside
+            ArticulationScreen — it doesn't depend on subjects/papers/questions
+            loading below, so it stays reachable even if that content fails. */}
+        {activeModuleTab === 'pksk' && onOpenArticulation && (
+          <button
+            onClick={() => {
+              soundManager.playClick();
+              onOpenArticulation();
+            }}
+            className="w-full text-left rounded-3xl bg-mist-100 hover:bg-mist-200/70 border border-mist-200 p-4 sm:p-5 flex items-center justify-between gap-4 transition-colors"
+          >
+            <div className="flex items-center gap-3.5 min-w-0">
+              <div className="w-12 h-12 rounded-2xl bg-cream-50 text-mist-600 shadow-sm flex items-center justify-center shrink-0">
+                <PenSquare className="w-6 h-6" />
+              </div>
+              <div className="min-w-0">
+                <h2 className="text-sm sm:text-base font-display font-bold text-ink-900">Artikulasi Karangan</h2>
+                <p className="text-xs sm:text-sm text-ink-500">Bahagian C — Bertulis. Berlatih atau uji diri dalam Exam Mode.</p>
+              </div>
+            </div>
+            <ArrowRight className="w-5 h-5 text-mist-600 shrink-0" />
+          </button>
+        )}
+
         {isContentLoading ? (
           <div className="bg-cream-50 border border-sand-200 rounded-3xl p-10 text-center space-y-3">
             <div className="w-10 h-10 border-4 border-mist-200 border-t-mist-500 rounded-full animate-spin mx-auto" />
@@ -294,66 +329,22 @@ export const Dashboard: React.FC<DashboardProps> = ({
             </p>
           </div>
         ) : activeModuleTab === 'sppim' ? (
-          <div className="grid grid-cols-1 md:grid-cols-3 gap-4 pt-1">
-            {subjects.map((sub) => {
-              const IconComponent = ICON_MAP[sub.icon] || BookOpen;
-              const isLocked = sub.status === 'locked';
-              const family = getColorFamily(sub.color);
-              const paperCount = papers?.filter((p) => p.subject_id === sub.id).length || 4;
-
-              return (
-                <div
-                  key={sub.id}
-                  onClick={() => {
-                    if (!isLocked) {
-                      soundManager.playClick();
-                      onSelectSubject(sub);
-                    }
-                  }}
-                  className={`rounded-3xl p-4 border-2 transition-colors ${
-                    isLocked
-                      ? 'bg-cream-100 border-sand-200 opacity-60 cursor-not-allowed'
-                      : `${CARD_TINT[family]} cursor-pointer`
-                  }`}
-                >
-                  <div className="space-y-3">
-                    <div className="flex items-start justify-between">
-                      <div className={`w-16 h-16 rounded-2xl bg-gradient-to-br ${sub.color} flex items-center justify-center text-white shrink-0 shadow-sm`}>
-                        <IconComponent className="w-8 h-8" />
-                      </div>
-                      {isLocked ? (
-                        <span className="text-[10px] font-bold uppercase bg-cream-200 text-ink-500 px-2.5 py-1 rounded-full flex items-center gap-1">
-                          <Lock className="w-3 h-3" />
-                          Kunci
-                        </span>
-                      ) : (
-                        <span className="text-[10px] font-bold uppercase bg-cream-50 text-sage-600 px-2.5 py-1 rounded-full">
-                          Sedia
-                        </span>
-                      )}
-                    </div>
-
-                    <div>
-                      <h3 className="text-xl font-display font-bold text-ink-900">{sub.name}</h3>
-                      <p className="text-xs text-ink-700 mt-1 line-clamp-2">{sub.description}</p>
-                    </div>
-
-                    {!isLocked && (
-                      <div className={`pt-2 flex items-center justify-between text-xs font-bold border-t ${CARD_FOOTER_TEXT[family]}`}>
-                        <span className="flex items-center gap-1 pt-2">
-                          <Star className="w-3.5 h-3.5 text-honey-400 fill-honey-400" />
-                          <span>{paperCount} Kertas</span>
-                        </span>
-                        <span className="flex items-center gap-1 pt-2">
-                          <span>Mula</span>
-                          <ArrowRight className="w-4 h-4" />
-                        </span>
-                      </div>
-                    )}
-                  </div>
+          <SubjectGrid subjects={subjects} papers={papers} onSelect={onSelectSubject} />
+        ) : activeModuleTab === 'pksk' ? (
+          <div className="space-y-4">
+            {pkskSubjects && pkskSubjects.length > 0 ? (
+              <SubjectGrid subjects={pkskSubjects} papers={pkskPapers} onSelect={onSelectSubject} />
+            ) : (
+              <div className="bg-cream-50 border border-sand-200 rounded-3xl p-6 text-center space-y-3 my-2">
+                <div className="w-12 h-12 rounded-2xl bg-cream-100 flex items-center justify-center mx-auto text-ink-500">
+                  <Lock className="w-6 h-6" />
                 </div>
-              );
-            })}
+                <h3 className="text-base font-display font-bold text-ink-900">Bank Soalan Belum Sedia</h3>
+                <p className="text-xs text-ink-500 max-w-xs mx-auto">
+                  EduQuest sedang menyediakan bank soalan Bahagian A/B untuk modul PKSK. Artikulasi Karangan (Bahagian C) di atas sudah boleh diakses.
+                </p>
+              </div>
+            )}
           </div>
         ) : (
           <div className="bg-cream-50 border border-sand-200 rounded-3xl p-6 text-center space-y-3 my-2">
