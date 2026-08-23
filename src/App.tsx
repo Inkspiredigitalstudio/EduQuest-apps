@@ -291,7 +291,7 @@ export default function App() {
     _xpEarned: number,
     answersMap: Record<string, string>
   ) => {
-    if (!activeSection || !user) return;
+    if (!activeSection || !activeSubject || !user) return;
 
     const tingkatan = user.school_form
       ? `Tingkatan ${user.school_form}`
@@ -302,6 +302,7 @@ export default function App() {
     await savePkskAttempt({
       user_id: user.id,
       tingkatan,
+      subject: activeSubject,
       section: activeSection,
       questions: pkskQuestions.filter((q) => q.section_id === activeSection.id),
       answersMap,

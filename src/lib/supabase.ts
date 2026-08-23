@@ -1399,16 +1399,43 @@ export async function bulkAddPkskQuestionsToSupabase(
 // Writes to exam_attempts -> exam_attempt_questions -> pksk_results, NOT
 // saveAttempt/updateUserStats (those are the SPPIM coin/XP reward path,
 // which PKSK deliberately does not use — see plan doc #3c).
+
+// Confirmed by Ieda: Bahagian A = Kecerdasan Insaniah (0.2), Bahagian B =
+// Kecerdasan Intelek & Pengetahuan Am (0.7), Bahagian C = Artikulasi
+// Penulisan (0.1). Bahagian A/B are objective (this module); Bahagian C is
+// the essay module (Track B) and is written to markah_bahagian_c elsewhere
+// once that module exists — this function never writes that column itself.
+const PKSK_BAHAGIAN_WEIGHT = { a: 0.2, b: 0.7, c: 0.1 } as const;
+
+// Subject -> Bahagian mapping (confirmed): "Kecerdasan Insaniah" is
+// Bahagian A on its own; "Pengetahuan Am" and "Psikometrik" both count
+// toward Bahagian B ("Kecerdasan Intelek & Pengetahuan Am"). Artikulasi
+// Penulisan (Bahagian C) isn't a pksk_subjects row at all — it's the
+// separate essay module.
+function pkskSubjectToBahagianCol(subjectName: string): 'markah_bahagian_a' | 'markah_bahagian_b' | null {
+  const name = subjectName.trim().toLowerCase();
+  if (name === 'kecerdasan insaniah') return 'markah_bahagian_a';
+  if (name === 'pengetahuan am' || name === 'psikometrik') return 'markah_bahagian_b';
+  return null;
+}
+
 export async function savePkskAttempt(params: {
   user_id: string;
   tingkatan: string; // exam_attempts.tingkatan is NOT NULL — pass the student's Tahun 6 / Tingkatan 3 selection
+  subject: Subject;
   section: Section;
   questions: Question[];
   answersMap: Record<string, string>; // question_id -> choice_id
 }): Promise<{ attempt_id: string; percent: number } | null> {
   if (!isSupabaseConfigured || !supabase) return null;
   try {
-    const { user_id, tingkatan, section, questions, answersMap } = params;
+    const { user_id, tingkatan, subject, section, questions, answersMap } = params;
+
+    const bahagianCol = pkskSubjectToBahagianCol(subject.name);
+    if (!bahagianCol) {
+      console.warn(`PKSK subject "${subject.name}" doesn't map to a known Bahagian (A/B) — skipping pksk_results write.`);
+      return null;
+    }
 
     const { data: attemptData, error: attemptErr } = await supabase
       .from('exam_attempts')
@@ -1441,17 +1468,49 @@ export async function savePkskAttempt(params: {
 
     const correctCount = answerRows.filter((r) => r.is_correct).length;
     const percent = questions.length > 0 ? Math.round((correctCount / questions.length) * 100) : 0;
-    const bahagianCol =
-      section.name === 'A' ? 'markah_bahagian_a' : section.name === 'B' ? 'markah_bahagian_b' : 'markah_bahagian_c';
 
-    // NOTE: jumlah_markah/gred (the combined A+B+C score) are intentionally
-    // NOT set here — the plan doc flags the weighting (0.7/0.1/0.2 in old
-    // notes) as UNCONFIRMED. Only this section's own bahagian column is
-    // written; wire the real cross-bahagian aggregate once Ieda confirms
-    // the formula (plan #3c / #9.0).
+    // jumlah_markah (weighted A+B+C) can only be computed once all three
+    // Bahagian have a score — Bahagian C comes from the separate Artikulasi
+    // (essay) module, which doesn't exist yet, so this is always null for
+    // now. Best score per Bahagian (not latest) matches the existing
+    // best_score convention used for SPPIM progress above.
+    let jumlahMarkah: number | null = null;
+    try {
+      const { data: priorAttempts } = await supabase
+        .from('exam_attempts')
+        .select('id')
+        .eq('user_id', user_id)
+        .eq('module', 'PKSK');
+      const attemptIds = (priorAttempts || []).map((a: any) => a.id);
+      if (attemptIds.length > 0) {
+        const { data: priorResults } = await supabase
+          .from('pksk_results')
+          .select('markah_bahagian_a, markah_bahagian_b, markah_bahagian_c')
+          .in('attempt_id', attemptIds);
+        let bestA: number | null = bahagianCol === 'markah_bahagian_a' ? percent : null;
+        let bestB: number | null = bahagianCol === 'markah_bahagian_b' ? percent : null;
+        let bestC: number | null = null;
+        for (const r of priorResults || []) {
+          if (typeof r.markah_bahagian_a === 'number') bestA = Math.max(bestA ?? 0, r.markah_bahagian_a);
+          if (typeof r.markah_bahagian_b === 'number') bestB = Math.max(bestB ?? 0, r.markah_bahagian_b);
+          if (typeof r.markah_bahagian_c === 'number') bestC = Math.max(bestC ?? 0, r.markah_bahagian_c);
+        }
+        if (bestA !== null && bestB !== null && bestC !== null) {
+          jumlahMarkah = Math.round(
+            bestA * PKSK_BAHAGIAN_WEIGHT.a + bestB * PKSK_BAHAGIAN_WEIGHT.b + bestC * PKSK_BAHAGIAN_WEIGHT.c
+          );
+        }
+      }
+    } catch (e) {
+      console.warn('Failed to compute PKSK jumlah_markah (non-fatal, left null):', e);
+    }
+
+    // gred (letter grade bands) is intentionally left unset — no grading
+    // scale/bands have been confirmed yet.
     const { error: resultErr } = await supabase.from('pksk_results').insert({
       attempt_id: attemptId,
       [bahagianCol]: percent,
+      ...(jumlahMarkah !== null ? { jumlah_markah: jumlahMarkah } : {}),
     });
     if (resultErr) throw resultErr;
 
