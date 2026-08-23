@@ -1,20 +1,19 @@
-<div align="center">
-<img width="1200" height="475" alt="GHBanner" src="https://ai.google.dev/static/site-assets/images/share-ais-513315318.png" />
-</div>
+# EduQuest
 
-# Run and deploy your AI Studio app
-
-This contains everything you need to run your app locally.
-
-View your app in AI Studio: https://ai.studio/apps/3ab3efbb-e317-46a9-aa5b-b77d7bdf5cd1
+Platform Hub Soalan Peperiksaan Interaktif (SPPIM Quest, PKSK, UKKM, PSRA & UASA) — Belajar, Bermain & Cemerlang.
 
 ## Run Locally
 
-**Prerequisites:**  Node.js
-
+**Prerequisites:** Node.js
 
 1. Install dependencies:
    `npm install`
-2. Set the `GEMINI_API_KEY` in [.env.local](.env.local) to your Gemini API key
+2. Copy `.env.example` to `.env.local` and fill in:
+   - `VITE_SUPABASE_URL` / `VITE_SUPABASE_ANON_KEY` — your Supabase project credentials.
+   - `ANTHROPIC_API_KEY` — only needed to run the AI Writing Coach (`api/articulation-ai.ts`) locally via `vercel dev`; plain `npm run dev` doesn't serve `/api` routes.
 3. Run the app:
    `npm run dev`
+
+## Deployment
+
+The app deploys as a static site (Vercel/Netlify) with one Vercel serverless function (`api/articulation-ai.ts`) proxying Claude API calls for the PKSK Artikulasi Karangan AI Coach — this keeps `ANTHROPIC_API_KEY` server-side only. Set that variable in your Vercel project's Environment Variables (not prefixed with `VITE_`, so it's never bundled into client code).

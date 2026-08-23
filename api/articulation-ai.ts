@@ -1,13 +1,19 @@
 // Vercel serverless function (Node runtime, auto-detected from /api).
-// Holds GEMINI_API_KEY server-side — the browser never sees it. All AI
+// Holds ANTHROPIC_API_KEY server-side — the browser never sees it. All AI
 // Writing Coach calls for PKSK Artikulasi Karangan go through here.
 //
 // EduQuest Artikulasi is an AI WRITING COACH, not an AI ESSAY GENERATOR
 // (plan #9.1 Bahagian 9/24/32) — every prompt below enforces that.
 
-import { GoogleGenAI, Type } from '@google/genai';
+import Anthropic from '@anthropic-ai/sdk';
+import { zodOutputFormat } from '@anthropic-ai/sdk/helpers/zod';
+import { z } from 'zod';
 
-const MODEL = 'gemini-2.5-flash';
+// Fast/cheap model for interactive coach actions (called often, on every
+// hint/idea/vocab click); a more deliberate model for post-submission
+// evaluation, where quality of judgement matters more than latency.
+const MODEL_INTERACTIVE = 'claude-haiku-4-5';
+const MODEL_EVALUATE = 'claude-sonnet-5';
 
 const COACH_RULES = `
 Anda ialah AI WRITING COACH untuk EduQuest Artikulasi Karangan — BUKAN AI Essay Generator.
@@ -39,35 +45,61 @@ function essayText(sections: { pengenalan?: string; isi?: string[]; penutup?: st
   return parts.join('\n\n') || '(Karangan masih kosong.)';
 }
 
+const fahamSoalanSchema = z.object({
+  topik: z.string(),
+  kehendak_soalan: z.string(),
+  sasaran: z.string(),
+  jenis_soalan: z.string(),
+  cadangan_bilangan_isi: z.number(),
+});
+
+const textSchema = z.object({ text: z.string() });
+const ideasSchema = z.object({ ideas: z.array(z.string()) });
+const suggestionsSchema = z.object({ suggestions: z.array(z.string()) });
+const evaluateSchema = z.object({
+  score: z.number(),
+  kekuatan: z.array(z.string()),
+  perkara_dibaiki: z.array(z.string()),
+  cadangan: z.array(z.string()),
+});
+
 interface ActionResult {
   status: number;
   body: unknown;
 }
 
-async function runAction(ai: GoogleGenAI, action: string, payload: any): Promise<ActionResult> {
+async function ask<T>(
+  client: Anthropic,
+  model: string,
+  prompt: string,
+  schema: Parameters<typeof zodOutputFormat>[0],
+  maxTokens: number
+): Promise<T> {
+  const response = await client.messages.parse({
+    model,
+    max_tokens: maxTokens,
+    system: COACH_RULES,
+    messages: [{ role: 'user', content: prompt }],
+    output_config: { format: zodOutputFormat(schema) },
+  });
+  if (!response.parsed_output) {
+    throw new Error('AI tidak mengembalikan output berstruktur yang sah.');
+  }
+  return response.parsed_output as T;
+}
+
+async function runAction(client: Anthropic, action: string, payload: any): Promise<ActionResult> {
   switch (action) {
     case 'faham_soalan': {
       const { question, topic, level } = payload;
-      const response = await ai.models.generateContent({
-        model: MODEL,
-        contents: `Soalan karangan: "${question}"\nTopik: ${topic}\n${levelContext(level)}\n\nPecahkan soalan ini untuk membantu pelajar faham sebelum menulis.`,
-        config: {
-          systemInstruction: COACH_RULES,
-          responseMimeType: 'application/json',
-          responseSchema: {
-            type: Type.OBJECT,
-            properties: {
-              topik: { type: Type.STRING },
-              kehendak_soalan: { type: Type.STRING },
-              sasaran: { type: Type.STRING },
-              jenis_soalan: { type: Type.STRING },
-              cadangan_bilangan_isi: { type: Type.NUMBER },
-            },
-            required: ['topik', 'kehendak_soalan', 'sasaran', 'jenis_soalan', 'cadangan_bilangan_isi'],
-          },
-        },
-      });
-      return { status: 200, body: JSON.parse(response.text || '{}') };
+      const body = await ask(
+        client,
+        MODEL_INTERACTIVE,
+        `Soalan karangan: "${question}"\nTopik: ${topic}\n${levelContext(level)}\n\nPecahkan soalan ini untuk membantu pelajar faham sebelum menulis.`,
+        fahamSoalanSchema,
+        1024
+      );
+      return { status: 200, body };
     }
 
     case 'hint':
@@ -77,107 +109,74 @@ async function runAction(ai: GoogleGenAI, action: string, payload: any): Promise
         action === 'hint'
           ? 'Pelajar tersekat dan minta HINT (petunjuk ringkas, bukan jawapan penuh) untuk bahagian ini.'
           : 'Beri SATU soalan panduan (bukan jawapan) untuk bantu pelajar berfikir sendiri tentang bahagian ini, ikut gaya soal-jawab bersiri (bukan borong).';
-      const response = await ai.models.generateContent({
-        model: MODEL,
-        contents: `Soalan karangan: "${question}"\n${levelContext(level)}\nBahagian karangan: ${section}\nApa yang pelajar dah tulis setakat ini untuk bahagian ini:\n"${currentText || '(kosong)'}"\n\n${instruction}`,
-        config: {
-          systemInstruction: COACH_RULES,
-          responseMimeType: 'application/json',
-          responseSchema: { type: Type.OBJECT, properties: { text: { type: Type.STRING } }, required: ['text'] },
-        },
-      });
-      return { status: 200, body: JSON.parse(response.text || '{}') };
+      const body = await ask(
+        client,
+        MODEL_INTERACTIVE,
+        `Soalan karangan: "${question}"\n${levelContext(level)}\nBahagian karangan: ${section}\nApa yang pelajar dah tulis setakat ini untuk bahagian ini:\n"${currentText || '(kosong)'}"\n\n${instruction}`,
+        textSchema,
+        512
+      );
+      return { status: 200, body };
     }
 
     case 'idea': {
       const { question, topic, level, section } = payload;
-      const response = await ai.models.generateContent({
-        model: MODEL,
-        contents: `Soalan karangan: "${question}"\nTopik: ${topic}\n${levelContext(level)}\nBahagian: ${section}\n\nCadangkan 3-4 idea/isi ringkas (bukan ayat penuh) yang pelajar boleh pilih dan kembangkan SENDIRI untuk bahagian ini.`,
-        config: {
-          systemInstruction: COACH_RULES,
-          responseMimeType: 'application/json',
-          responseSchema: {
-            type: Type.OBJECT,
-            properties: { ideas: { type: Type.ARRAY, items: { type: Type.STRING } } },
-            required: ['ideas'],
-          },
-        },
-      });
-      return { status: 200, body: JSON.parse(response.text || '{}') };
+      const body = await ask(
+        client,
+        MODEL_INTERACTIVE,
+        `Soalan karangan: "${question}"\nTopik: ${topic}\n${levelContext(level)}\nBahagian: ${section}\n\nCadangkan 3-4 idea/isi ringkas (bukan ayat penuh) yang pelajar boleh pilih dan kembangkan SENDIRI untuk bahagian ini.`,
+        ideasSchema,
+        512
+      );
+      return { status: 200, body };
     }
 
     case 'kosa_kata': {
       const { word, level, context } = payload;
-      const response = await ai.models.generateContent({
-        model: MODEL,
-        contents: `${levelContext(level)}\nKonteks ayat: "${context || ''}"\nPerkataan yang pelajar guna: "${word}"\n\nCadangkan 3-4 perkataan/frasa lebih sesuai atau bervariasi (ikut tahap pelajar) untuk gantikan perkataan ni.`,
-        config: {
-          systemInstruction: COACH_RULES,
-          responseMimeType: 'application/json',
-          responseSchema: {
-            type: Type.OBJECT,
-            properties: { suggestions: { type: Type.ARRAY, items: { type: Type.STRING } } },
-            required: ['suggestions'],
-          },
-        },
-      });
-      return { status: 200, body: JSON.parse(response.text || '{}') };
+      const body = await ask(
+        client,
+        MODEL_INTERACTIVE,
+        `${levelContext(level)}\nKonteks ayat: "${context || ''}"\nPerkataan yang pelajar guna: "${word}"\n\nCadangkan 3-4 perkataan/frasa lebih sesuai atau bervariasi (ikut tahap pelajar) untuk gantikan perkataan ni.`,
+        suggestionsSchema,
+        512
+      );
+      return { status: 200, body };
     }
 
     case 'peribahasa': {
       const { context, level } = payload;
-      const response = await ai.models.generateContent({
-        model: MODEL,
-        contents: `${levelContext(level)}\nKonteks karangan pelajar: "${context || ''}"\n\nCadangkan 2-3 simpulan bahasa/peribahasa yang BENAR-BENAR relevan dengan konteks ni (bukan generik). Kalau tiada yang benar-benar sesuai, kembalikan senarai kosong — jangan paksa.`,
-        config: {
-          systemInstruction: COACH_RULES,
-          responseMimeType: 'application/json',
-          responseSchema: {
-            type: Type.OBJECT,
-            properties: { suggestions: { type: Type.ARRAY, items: { type: Type.STRING } } },
-            required: ['suggestions'],
-          },
-        },
-      });
-      return { status: 200, body: JSON.parse(response.text || '{}') };
+      const body = await ask(
+        client,
+        MODEL_INTERACTIVE,
+        `${levelContext(level)}\nKonteks karangan pelajar: "${context || ''}"\n\nCadangkan 2-3 simpulan bahasa/peribahasa yang BENAR-BENAR relevan dengan konteks ni (bukan generik). Kalau tiada yang benar-benar sesuai, kembalikan senarai kosong — jangan paksa.`,
+        suggestionsSchema,
+        512
+      );
+      return { status: 200, body };
     }
 
     case 'baiki_ayat': {
       const { sentence, level } = payload;
-      const response = await ai.models.generateContent({
-        model: MODEL,
-        contents: `${levelContext(level)}\nAyat pelajar: "${sentence}"\n\nKalau ayat ni sebenarnya sudah betul dan jelas, katakan begitu — jangan overcorrect. Kalau boleh dibaiki, cadangkan SATU versi lebih baik, tapi galakkan pelajar cuba tulis versi sendiri dahulu sebelum guna cadangan ni terus.`,
-        config: {
-          systemInstruction: COACH_RULES,
-          responseMimeType: 'application/json',
-          responseSchema: { type: Type.OBJECT, properties: { text: { type: Type.STRING } }, required: ['text'] },
-        },
-      });
-      return { status: 200, body: JSON.parse(response.text || '{}') };
+      const body = await ask(
+        client,
+        MODEL_INTERACTIVE,
+        `${levelContext(level)}\nAyat pelajar: "${sentence}"\n\nKalau ayat ni sebenarnya sudah betul dan jelas, katakan begitu — jangan overcorrect. Kalau boleh dibaiki, cadangkan SATU versi lebih baik, tapi galakkan pelajar cuba tulis versi sendiri dahulu sebelum guna cadangan ni terus.`,
+        textSchema,
+        512
+      );
+      return { status: 200, body };
     }
 
     case 'evaluate': {
       const { question, level, wordTarget, sections } = payload;
-      const response = await ai.models.generateContent({
-        model: MODEL,
-        contents: `Soalan karangan: "${question}"\n${levelContext(level)}\nSasaran perkataan: ~${wordTarget}\n\nKarangan pelajar:\n${essayText(sections || {})}\n\nNilai karangan ini sebagai AI Writing Coach. Beri markah anggaran 0-100 (INI BUKAN markah rasmi PKSK — label sebagai "AI Writing Score" sahaja), maksimum 3 kekuatan, maksimum 3 perkara perlu dibaiki, dan beberapa cadangan (hint, bukan jawapan penuh) untuk pelajar perbaiki.`,
-        config: {
-          systemInstruction: COACH_RULES,
-          responseMimeType: 'application/json',
-          responseSchema: {
-            type: Type.OBJECT,
-            properties: {
-              score: { type: Type.NUMBER },
-              kekuatan: { type: Type.ARRAY, items: { type: Type.STRING } },
-              perkara_dibaiki: { type: Type.ARRAY, items: { type: Type.STRING } },
-              cadangan: { type: Type.ARRAY, items: { type: Type.STRING } },
-            },
-            required: ['score', 'kekuatan', 'perkara_dibaiki', 'cadangan'],
-          },
-        },
-      });
-      return { status: 200, body: JSON.parse(response.text || '{}') };
+      const body = await ask(
+        client,
+        MODEL_EVALUATE,
+        `Soalan karangan: "${question}"\n${levelContext(level)}\nSasaran perkataan: ~${wordTarget}\n\nKarangan pelajar:\n${essayText(sections || {})}\n\nNilai karangan ini sebagai AI Writing Coach. Beri markah anggaran 0-100 (INI BUKAN markah rasmi PKSK — label sebagai "AI Writing Score" sahaja), maksimum 3 kekuatan, maksimum 3 perkara perlu dibaiki, dan beberapa cadangan (hint, bukan jawapan penuh) untuk pelajar perbaiki.`,
+        evaluateSchema,
+        2048
+      );
+      return { status: 200, body };
     }
 
     default:
@@ -191,9 +190,9 @@ export default async function handler(req: any, res: any) {
     return;
   }
 
-  const apiKey = process.env.GEMINI_API_KEY;
+  const apiKey = process.env.ANTHROPIC_API_KEY;
   if (!apiKey) {
-    res.status(500).json({ error: 'GEMINI_API_KEY belum dikonfigurasi di server.' });
+    res.status(500).json({ error: 'ANTHROPIC_API_KEY belum dikonfigurasi di server.' });
     return;
   }
 
@@ -213,8 +212,8 @@ export default async function handler(req: any, res: any) {
   }
 
   try {
-    const ai = new GoogleGenAI({ apiKey });
-    const result = await runAction(ai, action, payload);
+    const client = new Anthropic({ apiKey });
+    const result = await runAction(client, action, payload);
     res.status(result.status).json(result.body);
   } catch (e) {
     console.error('articulation-ai error:', e);
