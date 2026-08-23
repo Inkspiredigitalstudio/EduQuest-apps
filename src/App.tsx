@@ -14,6 +14,13 @@ import {
   updateQuestionInSupabase,
   deleteQuestionFromSupabase,
   bulkAddQuestionsToSupabase,
+  fetchPkskExamDataFromSupabase,
+  addPkskQuestionToSupabase,
+  updatePkskQuestionInSupabase,
+  deletePkskQuestionFromSupabase,
+  bulkAddPkskQuestionsToSupabase,
+  savePkskAttempt,
+  getPkskProgressList,
 } from './lib/supabase';
 import { soundManager } from './lib/audio';
 
@@ -93,13 +100,30 @@ export default function App() {
     answersMap: Record<string, string>;
   } | null>(null);
 
-  // Data collections
+  // Data collections (SPPIM)
   const [subjects, setSubjects] = useState<Subject[]>([]);
   const [papers, setPapers] = useState<Paper[]>([]);
   const [sections, setSections] = useState<Section[]>([]);
   const [questions, setQuestions] = useState<Question[]>([]);
   const [dailyMissions, setDailyMissions] = useState<DailyMission[]>(DEFAULT_DAILY_MISSIONS);
   const [userProgress, setUserProgress] = useState<UserProgress[]>([]);
+
+  // Data collections (PKSK) — kept fully separate from the SPPIM arrays above
+  const [pkskSubjects, setPkskSubjects] = useState<Subject[]>([]);
+  const [pkskPapers, setPkskPapers] = useState<Paper[]>([]);
+  const [pkskSections, setPkskSections] = useState<Section[]>([]);
+  const [pkskQuestions, setPkskQuestions] = useState<Question[]>([]);
+
+  // Which module the current subject/section/exam selection belongs to —
+  // decided at selection time by checking which dataset the id came from,
+  // so Dashboard/SubjectView/ExamScreen keep their existing prop shapes.
+  const [activeModule, setActiveModule] = useState<'sppim' | 'pksk'>('sppim');
+
+  // Which module the Admin question-bank editor currently has selected —
+  // lifted here (rather than living only inside AdminDashboard) so
+  // handleAddQuestion/etc. below know whether to write to the SPPIM or
+  // PKSK tables.
+  const [adminActiveModule, setAdminActiveModule] = useState<'sppim' | 'pksk'>('sppim');
 
   // Modals (Student flow)
   const [isAuthOpen, setIsAuthOpen] = useState(false);
@@ -157,6 +181,21 @@ export default function App() {
     loadRemoteContent();
   }, []);
 
+  // Fetch PKSK content once alongside SPPIM — separate state, never merged
+  // with the subjects/papers/sections/questions arrays above.
+  useEffect(() => {
+    async function loadPkskContent() {
+      const remote = await fetchPkskExamDataFromSupabase();
+      if (remote) {
+        setPkskSubjects(remote.subjects || []);
+        setPkskPapers(remote.papers || []);
+        setPkskSections(remote.sections || []);
+        setPkskQuestions(remote.questions || []);
+      }
+    }
+    loadPkskContent();
+  }, []);
+
   // Load user progress (Student's own progress — not used by Parent/Admin views)
   useEffect(() => {
     if (user) {
@@ -166,6 +205,15 @@ export default function App() {
     }
   }, [user]);
 
+  const [pkskUserProgress, setPkskUserProgress] = useState<UserProgress[]>([]);
+  useEffect(() => {
+    if (user) {
+      setPkskUserProgress(getPkskProgressList(user.id));
+    } else {
+      setPkskUserProgress([]);
+    }
+  }, [user, view]);
+
   const handleToggleMute = () => {
     const nextMuted = !isMuted;
     setIsMuted(nextMuted);
@@ -173,6 +221,8 @@ export default function App() {
   };
 
   const handleSelectSubject = (subject: Subject) => {
+    const isPksk = pkskSubjects.some((s) => s.id === subject.id);
+    setActiveModule(isPksk ? 'pksk' : 'sppim');
     setActiveSubject(subject);
     setView('subject');
   };
@@ -182,6 +232,8 @@ export default function App() {
       setIsAuthOpen(true);
       return;
     }
+    const isPksk = pkskSections.some((s) => s.id === section.id);
+    setActiveModule(isPksk ? 'pksk' : 'sppim');
     setActivePaper(paper);
     setActiveSection(section);
     setView('exam');
@@ -228,11 +280,64 @@ export default function App() {
     setView('result');
   };
 
+  // PKSK completion — writes to exam_attempts/exam_attempt_questions/
+  // pksk_results (via savePkskAttempt), NOT saveAttempt/updateUserStats.
+  // PKSK has no coin/XP reward system, so those two params are accepted
+  // (ExamScreen's onCompleteExam signature is shared/generic) but ignored.
+  const handleCompletePkskExam = async (
+    score: number,
+    total: number,
+    _coinsEarned: number,
+    _xpEarned: number,
+    answersMap: Record<string, string>
+  ) => {
+    if (!activeSection || !user) return;
+
+    const tingkatan = user.school_form
+      ? `Tingkatan ${user.school_form}`
+      : user.school_year
+      ? `Tahun ${user.school_year}`
+      : 'Tidak dinyatakan';
+
+    await savePkskAttempt({
+      user_id: user.id,
+      tingkatan,
+      section: activeSection,
+      questions: pkskQuestions.filter((q) => q.section_id === activeSection.id),
+      answersMap,
+    });
+
+    setLastExamResult({ score, total, coinsEarned: 0, xpEarned: 0, answersMap });
+    setView('result');
+  };
+
   // ------------------------- Admin question-bank management -------------------------
   // Optimistic local update for instant UI feedback, then persisted for real to
   // Supabase — Admin edits now survive refresh/redeploy instead of living only
   // in browser memory for the current session.
+  // Branches on adminActiveModule so PKSK edits land in the pksk_* tables
+  // instead of the SPPIM questions/choices tables.
   const handleAddQuestion = async (newQ: Question) => {
+    if (adminActiveModule === 'pksk') {
+      setPkskQuestions((prev) => [newQ, ...prev]);
+      const choicesPayload = newQ.choices.map((c) => ({ text: c.option_text, correct: c.is_correct, nilai_skala: c.nilai_skala }));
+      const saved = await addPkskQuestionToSupabase(
+        newQ.section_id,
+        newQ.question_text,
+        newQ.explanation,
+        choicesPayload,
+        newQ.order,
+        newQ.answer_format,
+        newQ.dimensi_personaliti,
+        newQ.aras_kesukaran,
+        newQ.image_url
+      );
+      if (saved) {
+        setPkskQuestions((prev) => prev.map((q) => (q.id === newQ.id ? saved : q)));
+      }
+      return;
+    }
+
     setQuestions((prev) => [newQ, ...prev]);
 
     const choicesPayload = newQ.choices.map((c) => ({ text: c.option_text, correct: c.is_correct }));
@@ -243,16 +348,52 @@ export default function App() {
   };
 
   const handleUpdateQuestion = async (updatedQ: Question) => {
+    if (adminActiveModule === 'pksk') {
+      setPkskQuestions((prev) => prev.map((q) => (q.id === updatedQ.id ? updatedQ : q)));
+      await updatePkskQuestionInSupabase(updatedQ);
+      return;
+    }
+
     setQuestions((prev) => prev.map((q) => (q.id === updatedQ.id ? updatedQ : q)));
     await updateQuestionInSupabase(updatedQ);
   };
 
   const handleDeleteQuestion = async (questionId: string) => {
+    if (adminActiveModule === 'pksk') {
+      setPkskQuestions((prev) => prev.filter((q) => q.id !== questionId));
+      await deletePkskQuestionFromSupabase(questionId);
+      return;
+    }
+
     setQuestions((prev) => prev.filter((q) => q.id !== questionId));
     await deleteQuestionFromSupabase(questionId);
   };
 
   const handleBulkAddQuestions = async (newQuestions: Question[]) => {
+    if (adminActiveModule === 'pksk') {
+      setPkskQuestions((prev) => [...newQuestions, ...prev]);
+
+      const payload = newQuestions.map((q) => ({
+        section_id: q.section_id,
+        question_text: q.question_text,
+        explanation: q.explanation,
+        answer_format: q.answer_format,
+        dimensi_personaliti: q.dimensi_personaliti,
+        aras_kesukaran: q.aras_kesukaran,
+        image_url: q.image_url,
+        choices: q.choices.map((c) => ({ text: c.option_text, correct: c.is_correct, nilai_skala: c.nilai_skala })),
+      }));
+      const saved = await bulkAddPkskQuestionsToSupabase(payload);
+      if (saved.length > 0) {
+        setPkskQuestions((prev) => {
+          const tempIds = new Set(newQuestions.map((q) => q.id));
+          const withoutTemps = prev.filter((q) => !tempIds.has(q.id));
+          return [...saved, ...withoutTemps];
+        });
+      }
+      return;
+    }
+
     setQuestions((prev) => [...newQuestions, ...prev]);
 
     const payload = newQuestions.map((q) => ({
@@ -279,7 +420,9 @@ export default function App() {
     setView('dashboard');
   };
 
-  const activeQuestions = activeSection ? questions.filter((q) => q.section_id === activeSection.id) : [];
+  const activeQuestions = activeSection
+    ? (activeModule === 'pksk' ? pkskQuestions : questions).filter((q) => q.section_id === activeSection.id)
+    : [];
 
   // ---------------------------------------------------------------------
   // ROLE-BASED TOP-LEVEL ROUTING
@@ -310,6 +453,12 @@ export default function App() {
         papers={papers}
         sections={sections}
         questions={questions}
+        pkskSubjects={pkskSubjects}
+        pkskPapers={pkskPapers}
+        pkskSections={pkskSections}
+        pkskQuestions={pkskQuestions}
+        activeModuleTab={adminActiveModule}
+        onModuleTabChange={setAdminActiveModule}
         onAddQuestion={handleAddQuestion}
         onUpdateQuestion={handleUpdateQuestion}
         onDeleteQuestion={handleDeleteQuestion}
@@ -344,6 +493,10 @@ export default function App() {
             subjects={subjects}
             papers={papers}
             sections={sections}
+            pkskSubjects={pkskSubjects}
+            pkskPapers={pkskPapers}
+            pkskSections={pkskSections}
+            pkskUserProgress={pkskUserProgress}
             userProgress={userProgress}
             dailyMissions={dailyMissions}
             isContentLoading={isContentLoading}
@@ -361,8 +514,8 @@ export default function App() {
         {view === 'subject' && activeSubject && (
           <SubjectView
             subject={activeSubject}
-            papers={papers}
-            sections={sections}
+            papers={activeModule === 'pksk' ? pkskPapers : papers}
+            sections={activeModule === 'pksk' ? pkskSections : sections}
             userProgress={userProgress}
             onBack={() => setView('dashboard')}
             onSelectSection={handleSelectSection}
@@ -374,8 +527,9 @@ export default function App() {
             section={activeSection}
             questions={activeQuestions}
             user={user}
-            onCompleteExam={handleCompleteExam}
+            onCompleteExam={activeModule === 'pksk' ? handleCompletePkskExam : handleCompleteExam}
             onCancel={() => setView('subject')}
+            explanationLabel={activeModule === 'pksk' ? 'Penerangan:' : undefined}
           />
         )}
 
@@ -391,7 +545,7 @@ export default function App() {
             user={user}
             subject={activeSubject}
             paper={activePaper}
-            allSections={sections}
+            allSections={activeModule === 'pksk' ? pkskSections : sections}
             userProgress={userProgress}
             onRetry={() => setView('exam')}
             onGoDashboard={() => setView('dashboard')}

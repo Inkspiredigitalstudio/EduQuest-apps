@@ -15,6 +15,12 @@ interface AdminDashboardProps {
   papers: Paper[];
   sections: Section[];
   questions: Question[];
+  pkskSubjects?: Subject[];
+  pkskPapers?: Paper[];
+  pkskSections?: Section[];
+  pkskQuestions?: Question[];
+  activeModuleTab: 'sppim' | 'pksk' | 'uasa';
+  onModuleTabChange: (tab: 'sppim' | 'pksk' | 'uasa') => void;
   onAddQuestion: (q: Question) => void;
   onUpdateQuestion: (q: Question) => void;
   onDeleteQuestion: (questionId: string) => void;
@@ -36,6 +42,14 @@ const DIFFICULTY_COLOR: Record<string, string> = {
   sukar: 'bg-clay-100 text-clay-500',
 };
 
+const ANSWER_FORMAT_OPTIONS: { value: NonNullable<Question['answer_format']>; label: string }[] = [
+  { value: 'mcq', label: 'Aneka Pilihan (MCQ)' },
+  { value: 'ya_tidak', label: 'Ya / Tidak' },
+  { value: 'betul_salah', label: 'Betul / Salah' },
+  { value: 'frekuensi3', label: 'Frekuensi (3 skala)' },
+  { value: 'likert5', label: 'Likert (5 skala)' },
+];
+
 const IMPORT_PLACEHOLDER = `[
   {
     "section_id": "sec-fekah-2024-A",
@@ -51,12 +65,37 @@ const IMPORT_PLACEHOLDER = `[
   }
 ]`;
 
+const PKSK_IMPORT_PLACEHOLDER = `[
+  {
+    "section_id": "sec-pksk-insaniah-a",
+    "question_text": "Saya suka membantu rakan yang menghadapi masalah.",
+    "explanation": "",
+    "answer_format": "likert5",
+    "dimensi_personaliti": "Empati",
+    "aras_kesukaran": 1,
+    "image_url": "",
+    "choices": [
+      { "text": "Sangat Setuju", "correct": true, "nilai_skala": 5 },
+      { "text": "Setuju", "correct": false, "nilai_skala": 4 },
+      { "text": "Tidak Pasti", "correct": false, "nilai_skala": 3 },
+      { "text": "Tidak Setuju", "correct": false, "nilai_skala": 2 },
+      { "text": "Sangat Tidak Setuju", "correct": false, "nilai_skala": 1 }
+    ]
+  }
+]`;
+
 export const AdminDashboard: React.FC<AdminDashboardProps> = ({
   user,
   subjects,
   papers,
   sections,
   questions,
+  pkskSubjects,
+  pkskPapers,
+  pkskSections,
+  pkskQuestions,
+  activeModuleTab,
+  onModuleTabChange,
   onAddQuestion,
   onUpdateQuestion,
   onDeleteQuestion,
@@ -66,7 +105,15 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
   onToggleDarkMode,
 }) => {
   const [activeTab, setActiveTab] = useState<'manual' | 'import' | 'participants' | 'setup'>('manual');
-  const [activeModuleTab, setActiveModuleTab] = useState<'sppim' | 'pksk' | 'uasa'>('sppim');
+
+  // Module-aware data — everything below (form dropdowns, question list,
+  // filters) reads from these instead of the raw SPPIM props directly, so
+  // the same admin UI works for both modules without duplicating it.
+  const isPkskModule = activeModuleTab === 'pksk';
+  const moduleSubjects = isPkskModule ? (pkskSubjects || []) : subjects;
+  const modulePapers = isPkskModule ? (pkskPapers || []) : papers;
+  const moduleSections = isPkskModule ? (pkskSections || []) : sections;
+  const moduleQuestions = isPkskModule ? (pkskQuestions || []) : questions;
 
   // ---- Participants (list / search / reset password) ----
   const [participants, setParticipants] = useState<UserProfile[]>([]);
@@ -82,10 +129,20 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
   // pick a default once they're actually available, and if the selection is
   // never made (e.g. resetForm reset it to something unset), fall back safely.
   useEffect(() => {
-    if (!selectedSectionId && sections.length > 0) {
-      setSelectedSectionId(sections[0].id);
+    if (!selectedSectionId && moduleSections.length > 0) {
+      setSelectedSectionId(moduleSections[0].id);
     }
-  }, [sections, selectedSectionId]);
+  }, [moduleSections, selectedSectionId]);
+
+  // Switching module tabs mid-edit would otherwise leave a section id from
+  // the other module selected — reset the form (and pick that module's
+  // first section) whenever the tab changes.
+  useEffect(() => {
+    setEditingId(null);
+    setSelectedSectionId(moduleSections[0]?.id || '');
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [activeModuleTab]);
+
   const [qText, setQText] = useState('');
   const [qExplanation, setQExplanation] = useState('');
   const [optA, setOptA] = useState('');
@@ -94,6 +151,9 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
   const [optD, setOptD] = useState('');
   const [correctOptIndex, setCorrectOptIndex] = useState<number>(0);
   const [difficulty, setDifficulty] = useState<'mudah' | 'sederhana' | 'sukar'>('sederhana');
+  const [answerFormat, setAnswerFormat] = useState<NonNullable<Question['answer_format']>>('mcq');
+  const [dimensiPersonaliti, setDimensiPersonaliti] = useState('');
+  const [arasKesukaran, setArasKesukaran] = useState<1 | 2 | 3>(1);
   const [imageUrl, setImageUrl] = useState('');
   const [formMsg, setFormMsg] = useState('');
 
@@ -128,8 +188,11 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
     setOptD('');
     setCorrectOptIndex(0);
     setDifficulty('sederhana');
+    setAnswerFormat('mcq');
+    setDimensiPersonaliti('');
+    setArasKesukaran(1);
     setImageUrl('');
-    setSelectedSectionId(sections[0]?.id || '');
+    setSelectedSectionId(moduleSections[0]?.id || '');
   };
 
   const handleEditClick = (q: Question) => {
@@ -140,6 +203,9 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
     setQText(q.question_text);
     setQExplanation(q.explanation || '');
     setDifficulty(q.difficulty || 'sederhana');
+    setAnswerFormat(q.answer_format || 'mcq');
+    setDimensiPersonaliti(q.dimensi_personaliti || '');
+    setArasKesukaran(q.aras_kesukaran || 1);
     setImageUrl(q.image_url || '');
     const opts = q.choices || [];
     setOptA(opts[0]?.option_text || '');
@@ -158,17 +224,17 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
   const [questionSectionFilter, setQuestionSectionFilter] = useState<string>('all');
 
   const getSubjectForQuestion = (q: Question): Subject | undefined => {
-    const sec = sections.find((s) => s.id === q.section_id);
+    const sec = moduleSections.find((s) => s.id === q.section_id);
     if (!sec) return undefined;
-    const paper = papers.find((p) => p.id === sec.paper_id);
+    const paper = modulePapers.find((p) => p.id === sec.paper_id);
     if (!paper) return undefined;
-    return subjects.find((s) => s.id === paper.subject_id);
+    return moduleSubjects.find((s) => s.id === paper.subject_id);
   };
 
   const getPaperForQuestion = (q: Question): Paper | undefined => {
-    const sec = sections.find((s) => s.id === q.section_id);
+    const sec = moduleSections.find((s) => s.id === q.section_id);
     if (!sec) return undefined;
-    return papers.find((p) => p.id === sec.paper_id);
+    return modulePapers.find((p) => p.id === sec.paper_id);
   };
 
   // Tahun (Paper) options scoped to the chosen Subjek; Bahagian options
@@ -176,11 +242,11 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
   // is picked, so the dropdowns cascade Subjek → Tahun → Bahagian.
   const papersForSubjectFilter = questionSubjectFilter === 'all'
     ? []
-    : papers.filter((p) => p.subject_id === questionSubjectFilter).sort((a, b) => (b.year ?? 0) - (a.year ?? 0));
+    : modulePapers.filter((p) => p.subject_id === questionSubjectFilter).sort((a, b) => (b.year ?? 0) - (a.year ?? 0));
 
   const sectionsForPaperFilter = questionPaperFilter === 'all'
     ? []
-    : sections.filter((s) => s.paper_id === questionPaperFilter);
+    : moduleSections.filter((s) => s.paper_id === questionPaperFilter);
 
   const handleQuestionSubjectFilterChange = (value: string) => {
     setQuestionSubjectFilter(value);
@@ -208,15 +274,15 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
     const yearCmp = (paperA?.year ?? 0) - (paperB?.year ?? 0);
     if (yearCmp !== 0) return yearCmp;
 
-    const secA = sections.find((s) => s.id === a.section_id);
-    const secB = sections.find((s) => s.id === b.section_id);
+    const secA = moduleSections.find((s) => s.id === a.section_id);
+    const secB = moduleSections.find((s) => s.id === b.section_id);
     const secOrderCmp = (secA?.order ?? 0) - (secB?.order ?? 0);
     if (secOrderCmp !== 0) return secOrderCmp;
 
     return (a.order ?? 0) - (b.order ?? 0);
   };
 
-  const filteredQuestions = questions
+  const filteredQuestions = moduleQuestions
     .filter((q) => {
       if (questionSubjectFilter !== 'all') {
         const subj = getSubjectForQuestion(q);
@@ -264,10 +330,16 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
       section_id: selectedSectionId,
       question_text: qText.trim(),
       explanation: qExplanation.trim() || 'Soalan latihan tambahan oleh Pentadbir.',
-      order: editingId ? (questions.find((q) => q.id === editingId)?.order ?? questions.length + 1) : questions.length + 1,
+      order: editingId ? (moduleQuestions.find((q) => q.id === editingId)?.order ?? moduleQuestions.length + 1) : moduleQuestions.length + 1,
       choices,
-      difficulty,
       image_url: imageUrl.trim() || undefined,
+      ...(isPkskModule
+        ? {
+            answer_format: answerFormat,
+            dimensi_personaliti: dimensiPersonaliti.trim() || undefined,
+            aras_kesukaran: arasKesukaran,
+          }
+        : { difficulty }),
     };
 
     if (editingId) {
@@ -292,6 +364,8 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
         throw new Error('Data mesti berbentuk senarai (array) soalan — sila rujuk format contoh.');
       }
 
+      const validAnswerFormats = ['mcq', 'ya_tidak', 'frekuensi3', 'likert5', 'betul_salah'];
+
       const newQuestions: Question[] = parsed.map((item: any, idx: number) => {
         if (!item.section_id || !item.question_text || !Array.isArray(item.choices) || item.choices.length < 2) {
           throw new Error(`Soalan #${idx + 1} tidak lengkap (perlukan section_id, question_text, dan sekurang-kurangnya 2 choices).`);
@@ -302,19 +376,33 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
           question_id: qId,
           option_text: c.text || c.option_text || '',
           is_correct: Boolean(c.correct ?? c.is_correct),
+          ...(isPkskModule && c.nilai_skala !== undefined ? { nilai_skala: Number(c.nilai_skala) } : {}),
         }));
-        if (!choices.some((c) => c.is_correct)) {
+
+        const answerFormatItem = isPkskModule && validAnswerFormats.includes(item.answer_format) ? item.answer_format : 'mcq';
+        // Scale-style formats (Likert/frekuensi) score by nilai_skala per
+        // choice, not a single "correct" answer — only require one for the
+        // MCQ-shaped formats.
+        const needsCorrectFlag = !isPkskModule || answerFormatItem === 'mcq' || answerFormatItem === 'ya_tidak' || answerFormatItem === 'betul_salah';
+        if (needsCorrectFlag && !choices.some((c) => c.is_correct)) {
           throw new Error(`Soalan #${idx + 1} tiada jawapan betul ditanda (correct: true).`);
         }
+
         return {
           id: qId,
           section_id: item.section_id,
           question_text: item.question_text,
           explanation: item.explanation || '',
-          order: questions.length + idx + 1,
+          order: moduleQuestions.length + idx + 1,
           choices,
-          difficulty: ['mudah', 'sederhana', 'sukar'].includes(item.difficulty) ? item.difficulty : undefined,
           image_url: item.image_url && String(item.image_url).trim() ? String(item.image_url).trim() : undefined,
+          ...(isPkskModule
+            ? {
+                answer_format: answerFormatItem,
+                dimensi_personaliti: item.dimensi_personaliti ? String(item.dimensi_personaliti).trim() : undefined,
+                aras_kesukaran: [1, 2, 3].includes(item.aras_kesukaran) ? item.aras_kesukaran : undefined,
+              }
+            : { difficulty: ['mudah', 'sederhana', 'sukar'].includes(item.difficulty) ? item.difficulty : undefined }),
         } as Question;
       });
 
@@ -495,20 +583,20 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
       </header>
 
       <main className="max-w-5xl mx-auto px-4 sm:px-6 py-6 space-y-6 pb-14">
-        {/* Module scaffold selector — SPPIM active, PKSK/UASA reserved for future modules */}
+        {/* Module selector — SPPIM & PKSK active, UASA reserved for a future module */}
         <div className="space-y-2">
           <h1 className="text-lg font-display font-bold text-ink-900">Pengurusan Bank Soalan</h1>
           <div className="flex items-center gap-2 overflow-x-auto pb-1 scrollbar-none">
             {[
               { id: 'sppim', name: 'SPPIM', active: true },
-              { id: 'pksk', name: 'PKSK', active: false },
+              { id: 'pksk', name: 'PKSK', active: true },
               { id: 'uasa', name: 'UASA', active: false },
             ].map((mod) => {
               const isSelected = activeModuleTab === mod.id;
               return (
                 <button
                   key={mod.id}
-                  onClick={() => mod.active && setActiveModuleTab(mod.id as any)}
+                  onClick={() => mod.active && onModuleTabChange(mod.id as any)}
                   disabled={!mod.active}
                   className={`px-4 py-2 rounded-xl text-xs font-bold shrink-0 border transition-colors flex items-center gap-1.5 ${
                     isSelected
@@ -530,7 +618,7 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
           </div>
         </div>
 
-        {activeModuleTab !== 'sppim' ? (
+        {activeModuleTab === 'uasa' ? (
           <div className="bg-cream-50 border border-sand-200 rounded-3xl p-8 text-center space-y-3">
             <div className="w-12 h-12 rounded-2xl bg-cream-100 flex items-center justify-center mx-auto text-ink-500">
               <Lock className="w-6 h-6" />
@@ -599,8 +687,8 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
                     <div>
                       <label className="block text-xs font-bold text-ink-700 mb-1">Pilih Bahagian Soalan</label>
                       <select value={selectedSectionId} onChange={(e) => setSelectedSectionId(e.target.value)} className={inputCls}>
-                        {sections.map((s) => {
-                          const paper = papers.find((p) => p.id === s.paper_id);
+                        {moduleSections.map((s) => {
+                          const paper = modulePapers.find((p) => p.id === s.paper_id);
                           return (
                             <option key={s.id} value={s.id}>
                               {paper ? `${paper.title} — ` : ''}{s.title}
@@ -646,13 +734,44 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
                       </div>
                       <div>
                         <label className="block text-xs font-bold text-ink-700 mb-1">Tahap Kesukaran</label>
-                        <select value={difficulty} onChange={(e) => setDifficulty(e.target.value as any)} className={inputCls}>
-                          <option value="mudah">Mudah</option>
-                          <option value="sederhana">Sederhana</option>
-                          <option value="sukar">Sukar</option>
-                        </select>
+                        {isPkskModule ? (
+                          <select value={arasKesukaran} onChange={(e) => setArasKesukaran(Number(e.target.value) as 1 | 2 | 3)} className={inputCls}>
+                            <option value={1}>Aras 1</option>
+                            <option value={2}>Aras 2</option>
+                            <option value={3}>Aras 3</option>
+                          </select>
+                        ) : (
+                          <select value={difficulty} onChange={(e) => setDifficulty(e.target.value as any)} className={inputCls}>
+                            <option value="mudah">Mudah</option>
+                            <option value="sederhana">Sederhana</option>
+                            <option value="sukar">Sukar</option>
+                          </select>
+                        )}
                       </div>
                     </div>
+
+                    {isPkskModule && (
+                      <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                        <div>
+                          <label className="block text-xs font-bold text-ink-700 mb-1">Format Jawapan</label>
+                          <select value={answerFormat} onChange={(e) => setAnswerFormat(e.target.value as any)} className={inputCls}>
+                            {ANSWER_FORMAT_OPTIONS.map((opt) => (
+                              <option key={opt.value} value={opt.value}>{opt.label}</option>
+                            ))}
+                          </select>
+                        </div>
+                        <div>
+                          <label className="block text-xs font-bold text-ink-700 mb-1">Dimensi Personaliti (pilihan)</label>
+                          <input
+                            type="text"
+                            value={dimensiPersonaliti}
+                            onChange={(e) => setDimensiPersonaliti(e.target.value)}
+                            placeholder="Contoh: Empati, Kepimpinan"
+                            className={inputCls}
+                          />
+                        </div>
+                      </div>
+                    )}
 
                     <div>
                       <label className="block text-xs font-bold text-ink-700 mb-1 flex items-center gap-1.5">
@@ -702,7 +821,7 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
                 <div className="bg-cream-50 border border-sand-200 rounded-3xl p-5 space-y-3">
                   <h3 className="text-sm font-bold text-ink-700 flex items-center gap-2">
                     <ListChecks className="w-4 h-4 text-mist-500" />
-                    <span>Bank Soalan Sedia Ada ({filteredQuestions.length} / {questions.length})</span>
+                    <span>Bank Soalan Sedia Ada ({filteredQuestions.length} / {moduleQuestions.length})</span>
                   </h3>
 
                   <div className="flex flex-col sm:flex-row sm:flex-wrap gap-2">
@@ -722,7 +841,7 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
                       className="w-full sm:w-36 bg-cream-100 border border-sand-300 text-ink-900 text-xs rounded-xl px-3 py-2 outline-none focus:border-mist-400 truncate"
                     >
                       <option value="all">Semua Subjek</option>
-                      {subjects.map((s) => (
+                      {moduleSubjects.map((s) => (
                         <option key={s.id} value={s.id}>{s.name}</option>
                       ))}
                     </select>
@@ -782,6 +901,21 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
                                     {DIFFICULTY_LABEL[q.difficulty]}
                                   </span>
                                 )}
+                                {isPkskModule && q.answer_format && (
+                                  <span className="text-[10px] font-bold px-2 py-0.5 rounded bg-sage-100 text-sage-600">
+                                    {ANSWER_FORMAT_OPTIONS.find((o) => o.value === q.answer_format)?.label || q.answer_format}
+                                  </span>
+                                )}
+                                {isPkskModule && q.dimensi_personaliti && (
+                                  <span className="text-[10px] font-bold px-2 py-0.5 rounded bg-honey-100 text-honey-500">
+                                    {q.dimensi_personaliti}
+                                  </span>
+                                )}
+                                {isPkskModule && q.aras_kesukaran && (
+                                  <span className="text-[10px] font-bold px-2 py-0.5 rounded bg-clay-100 text-clay-500">
+                                    Aras {q.aras_kesukaran}
+                                  </span>
+                                )}
                               </div>
                             </div>
                             <div className="flex items-center gap-1.5 shrink-0">
@@ -824,7 +958,7 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
                     rows={14}
                     value={importText}
                     onChange={(e) => setImportText(e.target.value)}
-                    placeholder={IMPORT_PLACEHOLDER}
+                    placeholder={isPkskModule ? PKSK_IMPORT_PLACEHOLDER : IMPORT_PLACEHOLDER}
                     className="w-full bg-cream-50 border border-sand-300 focus:border-mist-400 text-ink-900 font-mono text-xs rounded-2xl p-4 outline-none resize-none leading-relaxed"
                   />
                 </div>

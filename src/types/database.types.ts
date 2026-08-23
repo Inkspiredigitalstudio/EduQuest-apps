@@ -15,6 +15,10 @@ export interface UserProfile {
   school_name?: string;
   team_id?: string;
   password?: string;
+  school_level?: 'rendah' | 'menengah';
+  school_year?: number;
+  school_form?: number;
+  contact_email?: string;
 }
 
 export interface Subject {
@@ -47,6 +51,7 @@ export interface Choice {
   question_id: string;
   option_text: string;
   is_correct: boolean;
+  nilai_skala?: number;
 }
 
 export interface Question {
@@ -58,6 +63,10 @@ export interface Question {
   choices: Choice[];
   difficulty?: 'mudah' | 'sederhana' | 'sukar';
   image_url?: string;
+  answer_format?: 'mcq' | 'ya_tidak' | 'frekuensi3' | 'likert5' | 'betul_salah';
+  dimensi_personaliti?: string;
+  aras_kesukaran?: 1 | 2 | 3;
+  source_set?: string;
 }
 
 export interface UserProgress {
