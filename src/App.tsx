@@ -36,6 +36,10 @@ import { ProfileModal } from './components/ProfileModal';
 import { ParentDashboard } from './components/ParentDashboard';
 import { AdminDashboard } from './components/AdminDashboard';
 
+// PKSK Artikulasi Karangan (Track B) — standalone screen, entered from the
+// PKSK hub card in Dashboard once a subject/mode is picked internally.
+import { ArticulationScreen } from './features/articulation/ArticulationScreen';
+
 // New Milestone Modals
 import { RoleSelectionModal } from './features/auth/RoleSelectionModal';
 import { BattleLobbyModal } from './features/dashboard/BattleLobbyModal';
@@ -68,7 +72,7 @@ export default function App() {
   };
 
   // View state (Student flow only — Parent & Admin each have their own dedicated full-page view)
-  const [view, setView] = useState<'dashboard' | 'subject' | 'exam' | 'result'>('dashboard');
+  const [view, setView] = useState<'dashboard' | 'subject' | 'exam' | 'result' | 'articulation'>('dashboard');
   const [activeNavTab, setActiveNavTab] = useState<'home' | 'battle' | 'achievements' | 'leaderboard' | 'profile'>('home');
 
   const handleBottomNavSelect = (tab: 'home' | 'battle' | 'achievements' | 'leaderboard' | 'profile') => {
@@ -509,7 +513,18 @@ export default function App() {
             onOpenBattle={() => setIsBattleOpen(true)}
             onOpenAchievements={() => setIsAchievementsOpen(true)}
             onOpenSocial={() => setIsSocialOpen(true)}
+            onOpenArticulation={() => {
+              if (!user) {
+                setIsAuthOpen(true);
+                return;
+              }
+              setView('articulation');
+            }}
           />
+        )}
+
+        {view === 'articulation' && user && (
+          <ArticulationScreen user={user} onExit={() => setView('dashboard')} />
         )}
 
         {view === 'subject' && activeSubject && (

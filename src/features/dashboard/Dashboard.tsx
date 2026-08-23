@@ -15,6 +15,7 @@ import {
   Coins,
   Swords,
   Play,
+  PenSquare,
 } from 'lucide-react';
 
 interface DashboardProps {
@@ -37,6 +38,7 @@ interface DashboardProps {
   onOpenBattle?: () => void;
   onOpenAchievements?: () => void;
   onOpenSocial?: () => void;
+  onOpenArticulation?: () => void;
 }
 
 const ICON_MAP: Record<string, React.FC<{ className?: string }>> = {
@@ -116,6 +118,7 @@ export const Dashboard: React.FC<DashboardProps> = ({
   onSelectSection,
   onOpenAuth,
   onOpenBattle,
+  onOpenArticulation,
 }) => {
   const [activeModuleTab, setActiveModuleTab] = React.useState<'sppim' | 'pksk' | 'uasa'>('sppim');
 
@@ -288,6 +291,30 @@ export const Dashboard: React.FC<DashboardProps> = ({
           })}
         </div>
 
+        {/* Artikulasi Karangan (Bahagian C) has its own data fetching inside
+            ArticulationScreen — it doesn't depend on subjects/papers/questions
+            loading below, so it stays reachable even if that content fails. */}
+        {activeModuleTab === 'pksk' && onOpenArticulation && (
+          <button
+            onClick={() => {
+              soundManager.playClick();
+              onOpenArticulation();
+            }}
+            className="w-full text-left rounded-3xl bg-mist-100 hover:bg-mist-200/70 border border-mist-200 p-4 sm:p-5 flex items-center justify-between gap-4 transition-colors"
+          >
+            <div className="flex items-center gap-3.5 min-w-0">
+              <div className="w-12 h-12 rounded-2xl bg-cream-50 text-mist-600 shadow-sm flex items-center justify-center shrink-0">
+                <PenSquare className="w-6 h-6" />
+              </div>
+              <div className="min-w-0">
+                <h2 className="text-sm sm:text-base font-display font-bold text-ink-900">Artikulasi Karangan</h2>
+                <p className="text-xs sm:text-sm text-ink-500">Bahagian C — Bertulis. Berlatih atau uji diri dalam Exam Mode.</p>
+              </div>
+            </div>
+            <ArrowRight className="w-5 h-5 text-mist-600 shrink-0" />
+          </button>
+        )}
+
         {isContentLoading ? (
           <div className="bg-cream-50 border border-sand-200 rounded-3xl p-10 text-center space-y-3">
             <div className="w-10 h-10 border-4 border-mist-200 border-t-mist-500 rounded-full animate-spin mx-auto" />
@@ -304,28 +331,21 @@ export const Dashboard: React.FC<DashboardProps> = ({
         ) : activeModuleTab === 'sppim' ? (
           <SubjectGrid subjects={subjects} papers={papers} onSelect={onSelectSubject} />
         ) : activeModuleTab === 'pksk' ? (
-          (pkskSubjects && pkskSubjects.length > 0) ? (
-            <SubjectGrid subjects={pkskSubjects} papers={pkskPapers} onSelect={onSelectSubject} />
-          ) : (
-            <div className="bg-cream-50 border border-sand-200 rounded-3xl p-6 text-center space-y-3 my-2">
-              <div className="w-12 h-12 rounded-2xl bg-cream-100 flex items-center justify-center mx-auto text-ink-500">
-                <Lock className="w-6 h-6" />
+          <div className="space-y-4">
+            {pkskSubjects && pkskSubjects.length > 0 ? (
+              <SubjectGrid subjects={pkskSubjects} papers={pkskPapers} onSelect={onSelectSubject} />
+            ) : (
+              <div className="bg-cream-50 border border-sand-200 rounded-3xl p-6 text-center space-y-3 my-2">
+                <div className="w-12 h-12 rounded-2xl bg-cream-100 flex items-center justify-center mx-auto text-ink-500">
+                  <Lock className="w-6 h-6" />
+                </div>
+                <h3 className="text-base font-display font-bold text-ink-900">Bank Soalan Belum Sedia</h3>
+                <p className="text-xs text-ink-500 max-w-xs mx-auto">
+                  EduQuest sedang menyediakan bank soalan Bahagian A/B untuk modul PKSK. Artikulasi Karangan (Bahagian C) di atas sudah boleh diakses.
+                </p>
               </div>
-              <h3 className="text-base font-display font-bold text-ink-900">Bank Soalan Belum Sedia</h3>
-              <p className="text-xs text-ink-500 max-w-xs mx-auto">
-                EduQuest sedang menyediakan bank soalan untuk modul PKSK. Buat masa ini, sila teruskan dengan <strong className="text-ink-700">Modul SPPIM</strong>.
-              </p>
-              <button
-                onClick={() => {
-                  soundManager.playClick();
-                  setActiveModuleTab('sppim');
-                }}
-                className="px-4 py-2 bg-mist-500 hover:bg-mist-600 text-white font-bold rounded-xl text-xs transition-colors"
-              >
-                Kembali ke Modul SPPIM
-              </button>
-            </div>
-          )
+            )}
+          </div>
         ) : (
           <div className="bg-cream-50 border border-sand-200 rounded-3xl p-6 text-center space-y-3 my-2">
             <div className="w-12 h-12 rounded-2xl bg-cream-100 flex items-center justify-center mx-auto text-ink-500">

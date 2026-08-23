@@ -170,3 +170,60 @@ export interface BattleRoom {
   winner_id?: string;
   created_at: string;
 }
+
+// ------------------------- PKSK Artikulasi Karangan (Track B) -------------------------
+
+export type ArticulationLevel = 'Tahun 6' | 'Tingkatan 3';
+export type ArticulationMode = 'practice' | 'exam';
+
+export interface ArticulationQuestion {
+  id: string;
+  level: ArticulationLevel;
+  question: string;
+  topic: string;
+  question_type?: string;
+  recommended_word_count?: number;
+  is_active: boolean;
+  created_at?: string;
+}
+
+// The essay itself, structured by section — stored JSON-encoded in
+// essay_answers.draf_semasa so it round-trips without fragile text parsing.
+// Isi 4 only applies at Tingkatan 3 (plan #9.1 Bahagian 11-12).
+export interface EssaySections {
+  pengenalan: string;
+  isi: string[];
+  penutup: string;
+}
+
+export interface EssayAnswer {
+  id: string;
+  attempt_id: string;
+  articulation_question_id?: string;
+  tajuk_esei: string;
+  draf_semasa: string; // JSON-encoded EssaySections
+  jumlah_perkataan: number;
+  status: 'draf' | 'sedang_disemak_ai' | 'dikunci';
+  skor_akhir?: number | null;
+  dikunci_pada?: string | null;
+  exam_start_time?: string | null;
+  exam_end_time?: string | null;
+}
+
+// AI feedback shape returned by the /api/articulation-ai "evaluate" action,
+// JSON-encoded into essay_feedback_rounds.maklum_balas_ai.
+export interface EssayAiFeedback {
+  score: number; // "AI Writing Score" — explicitly NOT the official PKSK Bahagian C mark
+  kekuatan: string[]; // max 3
+  perkara_dibaiki: string[]; // max 3
+  cadangan: string[];
+}
+
+export interface EssayFeedbackRound {
+  id: string;
+  essay_answer_id: string;
+  pusingan: number;
+  draf_dihantar: string; // JSON-encoded EssaySections snapshot at submission time
+  maklum_balas_ai: string; // JSON-encoded EssayAiFeedback
+  created_at: string;
+}
