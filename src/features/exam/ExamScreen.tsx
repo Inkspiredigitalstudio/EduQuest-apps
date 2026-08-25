@@ -22,10 +22,14 @@ function shuffleQuestionsChoices(questions: Question[]): Question[] {
     if (q.answer_format && q.answer_format !== 'mcq') return q;
     if (!q.choices || q.choices.length <= 1) return q;
 
-    const correctChoice = q.choices.find((c) => c.is_correct);
+    // A question may have more than one correct choice (e.g. paired accepted
+    // answers like A/B in psychometric scales) — keep them ALL, not just the
+    // first match, or the extra correct choice(s) silently disappear from
+    // the shuffled list below.
+    const correctChoices = q.choices.filter((c) => c.is_correct);
     const incorrectChoices = q.choices.filter((c) => !c.is_correct);
 
-    if (!correctChoice || incorrectChoices.length === 0) return q;
+    if (correctChoices.length === 0 || incorrectChoices.length === 0) return q;
 
     const shuffleArray = <T,>(arr: T[]): T[] => {
       const copy = [...arr];
@@ -42,7 +46,7 @@ function shuffleQuestionsChoices(questions: Question[]): Question[] {
       const shuffledIncorrect = shuffleArray(incorrectChoices);
       const firstIncorrect = shuffledIncorrect[0];
       const remainingIncorrect = shuffledIncorrect.slice(1);
-      const rest = shuffleArray([correctChoice, ...remainingIncorrect]);
+      const rest = shuffleArray([...correctChoices, ...remainingIncorrect]);
       shuffledChoices = [firstIncorrect, ...rest];
     } else {
       shuffledChoices = shuffleArray(q.choices);

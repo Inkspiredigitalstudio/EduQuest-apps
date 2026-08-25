@@ -6,7 +6,7 @@
 // EduQuest Artikulasi is an AI WRITING COACH, not an AI ESSAY GENERATOR
 // (plan #9.1 Bahagian 9/24/32) — every prompt below enforces that.
 
-import { inkyAsk, Type, Schema } from './_lib/inkyEngine';
+import { inkyAsk, Type, Schema } from './_lib/inkyEngine.js';
 
 const COACH_RULES = `
 Anda ialah AI WRITING COACH untuk EduQuest Artikulasi Karangan — BUKAN AI Essay Generator.
