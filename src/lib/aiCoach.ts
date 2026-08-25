@@ -1,7 +1,8 @@
-// Client wrapper around /api/articulation-ai (the Vercel serverless Claude
-// proxy). ANTHROPIC_API_KEY never appears here — everything is a fetch() to
-// our own server. Practice Mode only, except evaluateEssay which both
-// Practice and Exam Mode call after submission (plan #9.1 Bahagian 20).
+// Client wrapper around /api/articulation-ai (backed by the centralized
+// Inky AI Engine — api/_lib/inkyEngine.ts, Gemini-powered). GEMINI_API_KEY
+// never appears here — everything is a fetch() to our own server. Practice
+// Mode only, except evaluateEssay which both Practice and Exam Mode call
+// after submission (plan #9.1 Bahagian 20).
 
 import { ArticulationLevel, EssayAiFeedback, EssaySections } from '../types';
 
