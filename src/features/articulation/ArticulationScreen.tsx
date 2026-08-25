@@ -308,6 +308,7 @@ export const ArticulationScreen: React.FC<ArticulationScreenProps> = ({ user, on
         onTimeUp={handleTimeUp}
         onSubmit={doSubmit}
         isSubmitting={isSubmitting}
+        onCancel={onExit}
         coachPanel={
           mode === 'practice' ? (
             <AiCoachPanel question={selectedQuestion} level={level} sections={sections} isiCount={isiCountFor(level)} />

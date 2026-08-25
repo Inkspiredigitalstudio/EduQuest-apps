@@ -1,19 +1,12 @@
 // Vercel serverless function (Node runtime, auto-detected from /api).
-// Holds ANTHROPIC_API_KEY server-side — the browser never sees it. All AI
-// Writing Coach calls for PKSK Artikulasi Karangan go through here.
+// Thin dispatcher over the centralized Inky AI Engine (./_lib/inkyEngine) —
+// holds no AI provider details itself. All AI Writing Coach calls for PKSK
+// Artikulasi Karangan go through here.
 //
 // EduQuest Artikulasi is an AI WRITING COACH, not an AI ESSAY GENERATOR
 // (plan #9.1 Bahagian 9/24/32) — every prompt below enforces that.
 
-import Anthropic from '@anthropic-ai/sdk';
-import { zodOutputFormat } from '@anthropic-ai/sdk/helpers/zod';
-import { z } from 'zod';
-
-// Fast/cheap model for interactive coach actions (called often, on every
-// hint/idea/vocab click); a more deliberate model for post-submission
-// evaluation, where quality of judgement matters more than latency.
-const MODEL_INTERACTIVE = 'claude-haiku-4-5';
-const MODEL_EVALUATE = 'claude-sonnet-5';
+import { inkyAsk, Type, Schema } from './_lib/inkyEngine';
 
 const COACH_RULES = `
 Anda ialah AI WRITING COACH untuk EduQuest Artikulasi Karangan — BUKAN AI Essay Generator.
@@ -45,59 +38,56 @@ function essayText(sections: { pengenalan?: string; isi?: string[]; penutup?: st
   return parts.join('\n\n') || '(Karangan masih kosong.)';
 }
 
-const fahamSoalanSchema = z.object({
-  topik: z.string(),
-  kehendak_soalan: z.string(),
-  sasaran: z.string(),
-  jenis_soalan: z.string(),
-  cadangan_bilangan_isi: z.number(),
+const fahamSoalanSchema: Schema = {
+  type: Type.OBJECT,
+  properties: {
+    topik: { type: Type.STRING },
+    kehendak_soalan: { type: Type.STRING },
+    sasaran: { type: Type.STRING },
+    jenis_soalan: { type: Type.STRING },
+    cadangan_bilangan_isi: { type: Type.NUMBER },
+  },
+  required: ['topik', 'kehendak_soalan', 'sasaran', 'jenis_soalan', 'cadangan_bilangan_isi'],
+};
+
+const textSchema: Schema = {
+  type: Type.OBJECT,
+  properties: { text: { type: Type.STRING } },
+  required: ['text'],
+};
+
+const listSchema = (key: string): Schema => ({
+  type: Type.OBJECT,
+  properties: { [key]: { type: Type.ARRAY, items: { type: Type.STRING } } },
+  required: [key],
 });
 
-const textSchema = z.object({ text: z.string() });
-const ideasSchema = z.object({ ideas: z.array(z.string()) });
-const suggestionsSchema = z.object({ suggestions: z.array(z.string()) });
-const evaluateSchema = z.object({
-  score: z.number(),
-  kekuatan: z.array(z.string()),
-  perkara_dibaiki: z.array(z.string()),
-  cadangan: z.array(z.string()),
-});
+const evaluateSchema: Schema = {
+  type: Type.OBJECT,
+  properties: {
+    score: { type: Type.NUMBER },
+    kekuatan: { type: Type.ARRAY, items: { type: Type.STRING } },
+    perkara_dibaiki: { type: Type.ARRAY, items: { type: Type.STRING } },
+    cadangan: { type: Type.ARRAY, items: { type: Type.STRING } },
+  },
+  required: ['score', 'kekuatan', 'perkara_dibaiki', 'cadangan'],
+};
 
 interface ActionResult {
   status: number;
   body: unknown;
 }
 
-async function ask<T>(
-  client: Anthropic,
-  model: string,
-  prompt: string,
-  schema: Parameters<typeof zodOutputFormat>[0],
-  maxTokens: number
-): Promise<T> {
-  const response = await client.messages.parse({
-    model,
-    max_tokens: maxTokens,
-    system: COACH_RULES,
-    messages: [{ role: 'user', content: prompt }],
-    output_config: { format: zodOutputFormat(schema) },
-  });
-  if (!response.parsed_output) {
-    throw new Error('AI tidak mengembalikan output berstruktur yang sah.');
-  }
-  return response.parsed_output as T;
-}
-
-async function runAction(client: Anthropic, action: string, payload: any): Promise<ActionResult> {
+async function runAction(action: string, payload: any): Promise<ActionResult> {
   switch (action) {
     case 'faham_soalan': {
       const { question, topic, level } = payload;
-      const body = await ask(
-        client,
-        MODEL_INTERACTIVE,
-        `Soalan karangan: "${question}"\nTopik: ${topic}\n${levelContext(level)}\n\nPecahkan soalan ini untuk membantu pelajar faham sebelum menulis.`,
-        fahamSoalanSchema,
-        1024
+      const body = await inkyAsk(
+        {
+          systemInstruction: COACH_RULES,
+          prompt: `Soalan karangan: "${question}"\nTopik: ${topic}\n${levelContext(level)}\n\nPecahkan soalan ini untuk membantu pelajar faham sebelum menulis.`,
+          schema: fahamSoalanSchema,
+        }
       );
       return { status: 200, body };
     }
@@ -109,73 +99,61 @@ async function runAction(client: Anthropic, action: string, payload: any): Promi
         action === 'hint'
           ? 'Pelajar tersekat dan minta HINT (petunjuk ringkas, bukan jawapan penuh) untuk bahagian ini.'
           : 'Beri SATU soalan panduan (bukan jawapan) untuk bantu pelajar berfikir sendiri tentang bahagian ini, ikut gaya soal-jawab bersiri (bukan borong).';
-      const body = await ask(
-        client,
-        MODEL_INTERACTIVE,
-        `Soalan karangan: "${question}"\n${levelContext(level)}\nBahagian karangan: ${section}\nApa yang pelajar dah tulis setakat ini untuk bahagian ini:\n"${currentText || '(kosong)'}"\n\n${instruction}`,
-        textSchema,
-        512
-      );
+      const body = await inkyAsk({
+        systemInstruction: COACH_RULES,
+        prompt: `Soalan karangan: "${question}"\n${levelContext(level)}\nBahagian karangan: ${section}\nApa yang pelajar dah tulis setakat ini untuk bahagian ini:\n"${currentText || '(kosong)'}"\n\n${instruction}`,
+        schema: textSchema,
+      });
       return { status: 200, body };
     }
 
     case 'idea': {
       const { question, topic, level, section } = payload;
-      const body = await ask(
-        client,
-        MODEL_INTERACTIVE,
-        `Soalan karangan: "${question}"\nTopik: ${topic}\n${levelContext(level)}\nBahagian: ${section}\n\nCadangkan 3-4 idea/isi ringkas (bukan ayat penuh) yang pelajar boleh pilih dan kembangkan SENDIRI untuk bahagian ini.`,
-        ideasSchema,
-        512
-      );
+      const body = await inkyAsk({
+        systemInstruction: COACH_RULES,
+        prompt: `Soalan karangan: "${question}"\nTopik: ${topic}\n${levelContext(level)}\nBahagian: ${section}\n\nCadangkan 3-4 idea/isi ringkas (bukan ayat penuh) yang pelajar boleh pilih dan kembangkan SENDIRI untuk bahagian ini.`,
+        schema: listSchema('ideas'),
+      });
       return { status: 200, body };
     }
 
     case 'kosa_kata': {
       const { word, level, context } = payload;
-      const body = await ask(
-        client,
-        MODEL_INTERACTIVE,
-        `${levelContext(level)}\nKonteks ayat: "${context || ''}"\nPerkataan yang pelajar guna: "${word}"\n\nCadangkan 3-4 perkataan/frasa lebih sesuai atau bervariasi (ikut tahap pelajar) untuk gantikan perkataan ni.`,
-        suggestionsSchema,
-        512
-      );
+      const body = await inkyAsk({
+        systemInstruction: COACH_RULES,
+        prompt: `${levelContext(level)}\nKonteks ayat: "${context || ''}"\nPerkataan yang pelajar guna: "${word}"\n\nCadangkan 3-4 perkataan/frasa lebih sesuai atau bervariasi (ikut tahap pelajar) untuk gantikan perkataan ni.`,
+        schema: listSchema('suggestions'),
+      });
       return { status: 200, body };
     }
 
     case 'peribahasa': {
       const { context, level } = payload;
-      const body = await ask(
-        client,
-        MODEL_INTERACTIVE,
-        `${levelContext(level)}\nKonteks karangan pelajar: "${context || ''}"\n\nCadangkan 2-3 simpulan bahasa/peribahasa yang BENAR-BENAR relevan dengan konteks ni (bukan generik). Kalau tiada yang benar-benar sesuai, kembalikan senarai kosong — jangan paksa.`,
-        suggestionsSchema,
-        512
-      );
+      const body = await inkyAsk({
+        systemInstruction: COACH_RULES,
+        prompt: `${levelContext(level)}\nKonteks karangan pelajar: "${context || ''}"\n\nCadangkan 2-3 simpulan bahasa/peribahasa yang BENAR-BENAR relevan dengan konteks ni (bukan generik). Kalau tiada yang benar-benar sesuai, kembalikan senarai kosong — jangan paksa.`,
+        schema: listSchema('suggestions'),
+      });
       return { status: 200, body };
     }
 
     case 'baiki_ayat': {
       const { sentence, level } = payload;
-      const body = await ask(
-        client,
-        MODEL_INTERACTIVE,
-        `${levelContext(level)}\nAyat pelajar: "${sentence}"\n\nKalau ayat ni sebenarnya sudah betul dan jelas, katakan begitu — jangan overcorrect. Kalau boleh dibaiki, cadangkan SATU versi lebih baik, tapi galakkan pelajar cuba tulis versi sendiri dahulu sebelum guna cadangan ni terus.`,
-        textSchema,
-        512
-      );
+      const body = await inkyAsk({
+        systemInstruction: COACH_RULES,
+        prompt: `${levelContext(level)}\nAyat pelajar: "${sentence}"\n\nKalau ayat ni sebenarnya sudah betul dan jelas, katakan begitu — jangan overcorrect. Kalau boleh dibaiki, cadangkan SATU versi lebih baik, tapi galakkan pelajar cuba tulis versi sendiri dahulu sebelum guna cadangan ni terus.`,
+        schema: textSchema,
+      });
       return { status: 200, body };
     }
 
     case 'evaluate': {
       const { question, level, wordTarget, sections } = payload;
-      const body = await ask(
-        client,
-        MODEL_EVALUATE,
-        `Soalan karangan: "${question}"\n${levelContext(level)}\nSasaran perkataan: ~${wordTarget}\n\nKarangan pelajar:\n${essayText(sections || {})}\n\nNilai karangan ini sebagai AI Writing Coach. Beri markah anggaran 0-100 (INI BUKAN markah rasmi PKSK — label sebagai "AI Writing Score" sahaja), maksimum 3 kekuatan, maksimum 3 perkara perlu dibaiki, dan beberapa cadangan (hint, bukan jawapan penuh) untuk pelajar perbaiki.`,
-        evaluateSchema,
-        2048
-      );
+      const body = await inkyAsk({
+        systemInstruction: COACH_RULES,
+        prompt: `Soalan karangan: "${question}"\n${levelContext(level)}\nSasaran perkataan: ~${wordTarget}\n\nKarangan pelajar:\n${essayText(sections || {})}\n\nNilai karangan ini sebagai AI Writing Coach. Beri markah anggaran 0-100 (INI BUKAN markah rasmi PKSK — label sebagai "AI Writing Score" sahaja), maksimum 3 kekuatan, maksimum 3 perkara perlu dibaiki, dan beberapa cadangan (hint, bukan jawapan penuh) untuk pelajar perbaiki.`,
+        schema: evaluateSchema,
+      });
       return { status: 200, body };
     }
 
@@ -187,12 +165,6 @@ async function runAction(client: Anthropic, action: string, payload: any): Promi
 export default async function handler(req: any, res: any) {
   if (req.method !== 'POST') {
     res.status(405).json({ error: 'Method not allowed' });
-    return;
-  }
-
-  const apiKey = process.env.ANTHROPIC_API_KEY;
-  if (!apiKey) {
-    res.status(500).json({ error: 'ANTHROPIC_API_KEY belum dikonfigurasi di server.' });
     return;
   }
 
@@ -212,8 +184,7 @@ export default async function handler(req: any, res: any) {
   }
 
   try {
-    const client = new Anthropic({ apiKey });
-    const result = await runAction(client, action, payload);
+    const result = await runAction(action, payload);
     res.status(result.status).json(result.body);
   } catch (e) {
     console.error('articulation-ai error:', e);

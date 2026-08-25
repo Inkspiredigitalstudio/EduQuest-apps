@@ -1,7 +1,8 @@
 import React, { useEffect, useState } from 'react';
 import { ArticulationLevel, ArticulationMode, ArticulationQuestion, EssaySections } from '../../types';
 import { wordCount } from '../../lib/articulation';
-import { Clock, Send, AlertTriangle } from 'lucide-react';
+import { soundManager } from '../../lib/audio';
+import { ArrowLeft, Clock, Send, AlertTriangle } from 'lucide-react';
 
 interface WritingEditorProps {
   question: ArticulationQuestion;
@@ -14,6 +15,7 @@ interface WritingEditorProps {
   onTimeUp?: () => void;
   onSubmit: () => void;
   isSubmitting: boolean;
+  onCancel: () => void;
   coachPanel?: React.ReactNode;
 }
 
@@ -35,6 +37,7 @@ export const WritingEditor: React.FC<WritingEditorProps> = ({
   onTimeUp,
   onSubmit,
   isSubmitting,
+  onCancel,
   coachPanel,
 }) => {
   const target = question.recommended_word_count || (level === 'Tahun 6' ? 100 : 250);
@@ -76,8 +79,27 @@ export const WritingEditor: React.FC<WritingEditorProps> = ({
     }
   };
 
+  const handleCancel = () => {
+    soundManager.playClick();
+    const warning =
+      mode === 'exam'
+        ? 'Adakah anda pasti mahu keluar? Exam akan dibatalkan dan karangan ini tidak akan dinilai.'
+        : 'Adakah anda pasti mahu keluar? Draf karangan ini akan disimpan, tetapi anda akan kembali ke menu PKSK.';
+    if (confirm(warning)) {
+      onCancel();
+    }
+  };
+
   return (
     <div className="max-w-4xl mx-auto space-y-4 pb-12">
+      <button
+        onClick={handleCancel}
+        className="flex items-center gap-1.5 text-xs font-bold text-ink-500 hover:text-ink-700"
+      >
+        <ArrowLeft className="w-4 h-4" />
+        <span>Kembali ke PKSK</span>
+      </button>
+
       {mode === 'exam' && examEndTime && (
         <div
           className={`sticky top-0 z-10 rounded-3xl border p-4 flex items-center justify-between gap-3 ${
