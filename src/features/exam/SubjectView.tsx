@@ -1,6 +1,7 @@
 import React, { useState } from 'react';
 import { Subject, Paper, Section, UserProgress } from '../../types';
 import { soundManager } from '../../lib/audio';
+import { PKSK_EXAM_SET_PAPER_PREFIX } from '../../lib/supabase';
 import { ArrowLeft, Calendar, FileText, CheckCircle2, Play, Award, BookOpen } from 'lucide-react';
 
 interface SubjectViewProps {
@@ -13,7 +14,12 @@ interface SubjectViewProps {
 }
 
 export const SubjectView: React.FC<SubjectViewProps> = ({ subject, papers, sections, userProgress, onBack, onSelectSection }) => {
-  const filteredPapers = papers.filter((p) => p.subject_id === subject.id);
+  // Pre-generated PKSK Exam Sets (see PKSK_Structural_Revision.md #6) are
+  // whole papers reserved for the dedicated mixed-exam entry point, not
+  // regular per-subject Practice Mode browsing — exclude them here so they
+  // can't be reached (and don't leak Bahagian-A/B category identity) via the
+  // normal subject → paper → section drill-down.
+  const filteredPapers = papers.filter((p) => p.subject_id === subject.id && !p.title.startsWith(PKSK_EXAM_SET_PAPER_PREFIX));
   const [selectedPaperId, setSelectedPaperId] = useState<string>(filteredPapers[0]?.id || '');
 
   const currentPaper = filteredPapers.find((p) => p.id === selectedPaperId) || filteredPapers[0];

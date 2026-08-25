@@ -21,6 +21,8 @@ import {
   bulkAddPkskQuestionsToSupabase,
   savePkskAttempt,
   getPkskProgressList,
+  getPkskExamSetQuestions,
+  savePkskMixedExamAttempt,
 } from './lib/supabase';
 import { soundManager } from './lib/audio';
 
@@ -32,6 +34,7 @@ import { Dashboard } from './components/Dashboard';
 import { SubjectView } from './components/SubjectView';
 import { ExamScreen } from './components/ExamScreen';
 import { ResultScreen } from './components/ResultScreen';
+import { PkskExamResult } from './features/exam/PkskExamResult';
 import { ProfileModal } from './components/ProfileModal';
 import { ParentDashboard } from './components/ParentDashboard';
 import { AdminDashboard } from './components/AdminDashboard';
@@ -72,7 +75,9 @@ export default function App() {
   };
 
   // View state (Student flow only — Parent & Admin each have their own dedicated full-page view)
-  const [view, setView] = useState<'dashboard' | 'subject' | 'exam' | 'result' | 'articulation'>('dashboard');
+  const [view, setView] = useState<
+    'dashboard' | 'subject' | 'exam' | 'result' | 'articulation' | 'pksk-exam' | 'pksk-exam-result'
+  >('dashboard');
   const [activeNavTab, setActiveNavTab] = useState<'home' | 'battle' | 'achievements' | 'leaderboard' | 'profile'>('home');
 
   const handleBottomNavSelect = (tab: 'home' | 'battle' | 'achievements' | 'leaderboard' | 'profile') => {
@@ -117,6 +122,11 @@ export default function App() {
   const [pkskPapers, setPkskPapers] = useState<Paper[]>([]);
   const [pkskSections, setPkskSections] = useState<Section[]>([]);
   const [pkskQuestions, setPkskQuestions] = useState<Question[]>([]);
+
+  // PKSK Exam Mode (structural revision) — the mixed 100-question Bahagian
+  // A+B sitting, separate from Practice Mode's per-section flow above.
+  const [pkskExamQuestions, setPkskExamQuestions] = useState<Question[]>([]);
+  const [pkskExamResult, setPkskExamResult] = useState<{ markahA: number | null; markahB: number | null } | null>(null);
 
   // Which module the current subject/section/exam selection belongs to —
   // decided at selection time by checking which dataset the id came from,
@@ -314,6 +324,49 @@ export default function App() {
 
     setLastExamResult({ score, total, coinsEarned: 0, xpEarned: 0, answersMap });
     setView('result');
+  };
+
+  // PKSK Exam Mode entry — pulls the pre-generated "PKSK Exam" set (doc:
+  // PKSK_Structural_Revision.md #6, no live question-selection algorithm).
+  // If content owners haven't created that paper/sections in Supabase yet,
+  // Dashboard's pkskExamSetReady gate keeps this button hidden, so reaching
+  // here with no questions shouldn't normally happen — bail safely anyway.
+  const handleStartPkskExam = () => {
+    if (!user) {
+      setIsAuthOpen(true);
+      return;
+    }
+    const examSet = getPkskExamSetQuestions(pkskPapers, pkskSections, pkskQuestions);
+    if (!examSet) return;
+    setPkskExamQuestions(examSet.questions);
+    setActiveModule('pksk');
+    setView('pksk-exam');
+  };
+
+  const handleCompletePkskMixedExam = async (
+    _score: number,
+    _total: number,
+    _coinsEarned: number,
+    _xpEarned: number,
+    answersMap: Record<string, string>
+  ) => {
+    if (!user) return;
+
+    const tingkatan = user.school_form
+      ? `Tingkatan ${user.school_form}`
+      : user.school_year
+      ? `Tahun ${user.school_year}`
+      : 'Tidak dinyatakan';
+
+    const result = await savePkskMixedExamAttempt({
+      user_id: user.id,
+      tingkatan,
+      questions: pkskExamQuestions,
+      answersMap,
+    });
+
+    setPkskExamResult({ markahA: result?.markahA ?? null, markahB: result?.markahB ?? null });
+    setView('pksk-exam-result');
   };
 
   // ------------------------- Admin question-bank management -------------------------
@@ -520,11 +573,33 @@ export default function App() {
               }
               setView('articulation');
             }}
+            onOpenPkskExam={handleStartPkskExam}
+            pkskExamSetReady={getPkskExamSetQuestions(pkskPapers, pkskSections, pkskQuestions) !== null}
           />
         )}
 
         {view === 'articulation' && user && (
           <ArticulationScreen user={user} onExit={() => setView('dashboard')} />
+        )}
+
+        {view === 'pksk-exam' && user && pkskExamQuestions.length > 0 && (
+          <ExamScreen
+            questions={pkskExamQuestions}
+            user={user}
+            mode="exam"
+            onCompleteExam={handleCompletePkskMixedExam}
+            onCancel={() => setView('dashboard')}
+            explanationLabel="Penerangan:"
+          />
+        )}
+
+        {view === 'pksk-exam-result' && pkskExamResult && (
+          <PkskExamResult
+            markahA={pkskExamResult.markahA}
+            markahB={pkskExamResult.markahB}
+            totalQuestions={pkskExamQuestions.length}
+            onGoDashboard={() => setView('dashboard')}
+          />
         )}
 
         {view === 'subject' && activeSubject && (

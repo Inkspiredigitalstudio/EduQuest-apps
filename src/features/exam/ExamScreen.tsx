@@ -4,12 +4,19 @@ import { soundManager } from '../../lib/audio';
 import { ArrowLeft, CheckCircle2, XCircle, Flame, Coins, Sparkles, ArrowRight, BookOpen, Trophy } from 'lucide-react';
 
 interface ExamScreenProps {
-  section: Section;
+  // Optional because PKSK Exam Mode spans many sections at once — there is
+  // no single "the" section to show, and the exam-mode label never reads it.
+  section?: Section;
   questions: Question[];
   user: UserProfile | null;
   onCompleteExam: (score: number, total: number, coinsEarned: number, xpEarned: number, answersMap: Record<string, string>) => void;
   onCancel: () => void;
   explanationLabel?: string;
+  // 'exam' = PKSK's mixed 100-question sitting (doc: PKSK_Structural_Revision
+  // #5) — hides which section/category the current question belongs to, so
+  // students can't infer Bahagian A vs B from the label. 'practice' (default)
+  // keeps today's behaviour: student already picked this section themselves.
+  mode?: 'practice' | 'exam';
 }
 
 function shuffleQuestionsChoices(questions: Question[]): Question[] {
@@ -69,6 +76,7 @@ export const ExamScreen: React.FC<ExamScreenProps> = ({
   onCompleteExam,
   onCancel,
   explanationLabel = 'Penerangan Hukum & Dalil:',
+  mode = 'practice',
 }) => {
   const questions = useMemo(() => shuffleQuestionsChoices(rawQuestions), [rawQuestions]);
 
@@ -126,15 +134,24 @@ export const ExamScreen: React.FC<ExamScreenProps> = ({
     );
   }
 
+  // Weighted-scale questions (nilai_skala set on choices — PKSK Bahagian A:
+  // Insaniah/Psikometrik) are opinion/situational, not right-or-wrong, so
+  // there's no "betul/salah" to flash — see PKSK_Structural_Revision.md #2.
+  const isWeightedQuestion = currentQuestion.choices.some((c) => c.nilai_skala != null);
+
   const handleSelectChoice = (choice: Choice) => {
     if (isAnswered) return;
 
     setSelectedChoiceId(choice.id);
     setIsAnswered(true);
-
-    const isCorrect = choice.is_correct;
     setAnswersMap((prev) => ({ ...prev, [currentQuestion.id]: choice.id }));
 
+    if (isWeightedQuestion) {
+      soundManager.playClick();
+      return;
+    }
+
+    const isCorrect = choice.is_correct;
     if (isCorrect) {
       soundManager.playCorrect();
       setScore((s) => s + 1);
@@ -223,9 +240,11 @@ export const ExamScreen: React.FC<ExamScreenProps> = ({
         <div className="space-y-3">
           <div className="flex items-center justify-between text-xs font-bold text-ink-500">
             <span className="uppercase tracking-wide text-mist-600 bg-mist-100 px-2.5 py-1 rounded-lg">
-              Bahagian {section.name} • Soalan {currentQuestion.order}
+              {mode === 'exam' || !section
+                ? `Soalan ${currentIndex + 1} / ${questions.length}`
+                : `Bahagian ${section.name} • Soalan ${currentQuestion.order}`}
             </span>
-            <span>Pilih SATU jawapan yang betul</span>
+            <span>{isWeightedQuestion ? 'Pilih jawapan yang PALING menggambarkan diri anda' : 'Pilih SATU jawapan yang betul'}</span>
           </div>
 
           <h2 className="text-xl sm:text-2xl font-display font-bold text-ink-900 leading-relaxed pt-1 whitespace-pre-line">
@@ -248,7 +267,12 @@ export const ExamScreen: React.FC<ExamScreenProps> = ({
             let badgeStyle = 'bg-cream-200 text-ink-700';
 
             if (isAnswered) {
-              if (isCorrect) {
+              if (isWeightedQuestion) {
+                buttonStyle = isSelected
+                  ? 'bg-mist-100 border-mist-400 text-ink-900'
+                  : 'bg-cream-100 border-sand-200 text-ink-300 opacity-60';
+                badgeStyle = isSelected ? 'bg-mist-500 text-white' : 'bg-cream-200 text-ink-700';
+              } else if (isCorrect) {
                 buttonStyle = 'bg-sage-100 border-sage-400 text-ink-900';
                 badgeStyle = 'bg-sage-500 text-white';
               } else if (isSelected && !isCorrect) {
@@ -275,7 +299,7 @@ export const ExamScreen: React.FC<ExamScreenProps> = ({
                   <span className="leading-snug">{choice.option_text}</span>
                 </div>
 
-                {isAnswered && (
+                {isAnswered && !isWeightedQuestion && (
                   <div>
                     {isCorrect && (
                       <div className="flex items-center gap-1 text-xs font-bold text-sage-600 bg-sage-100 px-3 py-1 rounded-full">
@@ -298,7 +322,11 @@ export const ExamScreen: React.FC<ExamScreenProps> = ({
 
         {isAnswered && selectedChoice && (
           <div className={`p-5 rounded-2xl border-2 space-y-2 ${
-            selectedChoice.is_correct ? 'bg-sage-100 border-sage-200 text-ink-900' : 'bg-honey-100 border-honey-200 text-ink-900'
+            isWeightedQuestion
+              ? 'bg-mist-100 border-mist-200 text-ink-900'
+              : selectedChoice.is_correct
+              ? 'bg-sage-100 border-sage-200 text-ink-900'
+              : 'bg-honey-100 border-honey-200 text-ink-900'
           }`}>
             <div className="flex items-center gap-2 font-bold text-sm">
               <BookOpen className="w-4 h-4 text-mist-600" />

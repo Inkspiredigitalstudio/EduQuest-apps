@@ -39,6 +39,8 @@ interface DashboardProps {
   onOpenAchievements?: () => void;
   onOpenSocial?: () => void;
   onOpenArticulation?: () => void;
+  onOpenPkskExam?: () => void;
+  pkskExamSetReady?: boolean;
 }
 
 const ICON_MAP: Record<string, React.FC<{ className?: string }>> = {
@@ -119,6 +121,8 @@ export const Dashboard: React.FC<DashboardProps> = ({
   onOpenAuth,
   onOpenBattle,
   onOpenArticulation,
+  onOpenPkskExam,
+  pkskExamSetReady,
 }) => {
   const [activeModuleTab, setActiveModuleTab] = React.useState<'sppim' | 'pksk' | 'uasa'>('sppim');
 
@@ -312,6 +316,31 @@ export const Dashboard: React.FC<DashboardProps> = ({
               </div>
             </div>
             <ArrowRight className="w-5 h-5 text-mist-600 shrink-0" />
+          </button>
+        )}
+
+        {/* Exam PKSK — the real 100-question mixed A+B sitting (doc:
+            PKSK_Structural_Revision.md). Only shown once an "PKSK Exam" set
+            actually exists in the DB — Practice Mode below (per-subject
+            cards) always works regardless. */}
+        {activeModuleTab === 'pksk' && onOpenPkskExam && pkskExamSetReady && (
+          <button
+            onClick={() => {
+              soundManager.playClick();
+              onOpenPkskExam();
+            }}
+            className="w-full text-left rounded-3xl bg-clay-100 hover:bg-clay-200/70 border border-clay-200 p-4 sm:p-5 flex items-center justify-between gap-4 transition-colors"
+          >
+            <div className="flex items-center gap-3.5 min-w-0">
+              <div className="w-12 h-12 rounded-2xl bg-cream-50 text-clay-500 shadow-sm flex items-center justify-center shrink-0">
+                <Target className="w-6 h-6" />
+              </div>
+              <div className="min-w-0">
+                <h2 className="text-sm sm:text-base font-display font-bold text-ink-900">Exam PKSK — Bahagian A & B</h2>
+                <p className="text-xs sm:text-sm text-ink-500">100 soalan bercampur • 90 minit • satu sitting sebenar.</p>
+              </div>
+            </div>
+            <ArrowRight className="w-5 h-5 text-clay-500 shrink-0" />
           </button>
         )}
 
