@@ -12,9 +12,11 @@
 
 import { GoogleGenAI, Type, Schema } from '@google/genai';
 
-// gemini-3.7-flash is not publicly released yet — pin here and swap this
-// one constant once it ships. Do not point production at a "-latest" alias.
-const MODEL = 'gemini-2.5-flash';
+// gemini-2.5-flash returned 404 for this API key ("no longer available to
+// new users") — Google's own error pointed at gemini-3.6-flash as the
+// replacement. Pin here and swap this one constant if Google moves the
+// line again. Do not point production at a "-latest" alias.
+const MODEL = 'gemini-3.6-flash';
 
 let client: GoogleGenAI | null = null;
 
