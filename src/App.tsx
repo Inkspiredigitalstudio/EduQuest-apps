@@ -23,6 +23,7 @@ import {
   getPkskProgressList,
   getPkskExamSetQuestions,
   savePkskMixedExamAttempt,
+  PkskExamTingkatan,
 } from './lib/supabase';
 import { soundManager } from './lib/audio';
 
@@ -35,6 +36,7 @@ import { SubjectView } from './components/SubjectView';
 import { ExamScreen } from './components/ExamScreen';
 import { ResultScreen } from './components/ResultScreen';
 import { PkskExamResult } from './features/exam/PkskExamResult';
+import { PkskExamLevelPicker } from './features/exam/PkskExamLevelPicker';
 import { ProfileModal } from './components/ProfileModal';
 import { ParentDashboard } from './components/ParentDashboard';
 import { AdminDashboard } from './components/AdminDashboard';
@@ -76,7 +78,14 @@ export default function App() {
 
   // View state (Student flow only — Parent & Admin each have their own dedicated full-page view)
   const [view, setView] = useState<
-    'dashboard' | 'subject' | 'exam' | 'result' | 'articulation' | 'pksk-exam' | 'pksk-exam-result'
+    | 'dashboard'
+    | 'subject'
+    | 'exam'
+    | 'result'
+    | 'articulation'
+    | 'pksk-exam-level'
+    | 'pksk-exam'
+    | 'pksk-exam-result'
   >('dashboard');
   const [activeNavTab, setActiveNavTab] = useState<'home' | 'battle' | 'achievements' | 'leaderboard' | 'profile'>('home');
 
@@ -326,17 +335,28 @@ export default function App() {
     setView('result');
   };
 
-  // PKSK Exam Mode entry — pulls the pre-generated "PKSK Exam" set (doc:
-  // PKSK_Structural_Revision.md #6, no live question-selection algorithm).
-  // If content owners haven't created that paper/sections in Supabase yet,
-  // Dashboard's pkskExamSetReady gate keeps this button hidden, so reaching
-  // here with no questions shouldn't normally happen — bail safely anyway.
-  const handleStartPkskExam = () => {
+  // PKSK Exam Mode entry point — shows the Tahun 6 / Tingkatan 3 picker
+  // (Dashboard's pkskExamSetReady gate keeps the "Exam PKSK" button hidden
+  // entirely if NEITHER level has a set yet; the picker itself locks out
+  // whichever individual level isn't ready).
+  const handleOpenPkskExamPicker = () => {
     if (!user) {
       setIsAuthOpen(true);
       return;
     }
-    const examSet = getPkskExamSetQuestions(pkskPapers, pkskSections, pkskQuestions);
+    setView('pksk-exam-level');
+  };
+
+  // Pulls the pre-generated "PKSK Exam" set for the chosen tingkatan (doc:
+  // PKSK_Structural_Revision.md #6, no live question-selection algorithm).
+  // The level picker only enables levels that are ready, so reaching here
+  // with no questions shouldn't normally happen — bail safely anyway.
+  const handleStartPkskExam = (level: PkskExamTingkatan) => {
+    if (!user) {
+      setIsAuthOpen(true);
+      return;
+    }
+    const examSet = getPkskExamSetQuestions(pkskPapers, pkskSections, pkskQuestions, level);
     if (!examSet) return;
     setPkskExamQuestions(examSet.questions);
     setActiveModule('pksk');
@@ -573,13 +593,27 @@ export default function App() {
               }
               setView('articulation');
             }}
-            onOpenPkskExam={handleStartPkskExam}
-            pkskExamSetReady={getPkskExamSetQuestions(pkskPapers, pkskSections, pkskQuestions) !== null}
+            onOpenPkskExam={handleOpenPkskExamPicker}
+            pkskExamSetReady={
+              getPkskExamSetQuestions(pkskPapers, pkskSections, pkskQuestions, 'Tahun 6') !== null ||
+              getPkskExamSetQuestions(pkskPapers, pkskSections, pkskQuestions, 'Tingkatan 3') !== null
+            }
           />
         )}
 
         {view === 'articulation' && user && (
           <ArticulationScreen user={user} onExit={() => setView('dashboard')} />
+        )}
+
+        {view === 'pksk-exam-level' && (
+          <PkskExamLevelPicker
+            readyLevels={{
+              'Tahun 6': getPkskExamSetQuestions(pkskPapers, pkskSections, pkskQuestions, 'Tahun 6') !== null,
+              'Tingkatan 3': getPkskExamSetQuestions(pkskPapers, pkskSections, pkskQuestions, 'Tingkatan 3') !== null,
+            }}
+            onPickLevel={handleStartPkskExam}
+            onBack={() => setView('dashboard')}
+          />
         )}
 
         {view === 'pksk-exam' && user && pkskExamQuestions.length > 0 && (
