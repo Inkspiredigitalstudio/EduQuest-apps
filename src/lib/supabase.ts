@@ -1369,30 +1369,80 @@ export async function bulkAddPkskQuestionsToSupabase(
     section_id: string;
     question_text: string;
     explanation: string;
+    order?: number;
     answer_format?: Question['answer_format'];
     dimensi_personaliti?: string;
     aras_kesukaran?: 1 | 2 | 3;
     image_url?: string;
     choices: { text: string; correct: boolean; nilai_skala?: number }[];
   }[]
-): Promise<Question[]> {
-  if (!isSupabaseConfigured || !supabase) return [];
-  const results: Question[] = [];
-  for (const item of items) {
-    const q = await addPkskQuestionToSupabase(
-      item.section_id,
-      item.question_text,
-      item.explanation,
-      item.choices,
-      1,
-      item.answer_format || 'mcq',
-      item.dimensi_personaliti,
-      item.aras_kesukaran,
-      item.image_url
-    );
-    if (q) results.push(q);
+): Promise<{ saved: Question[]; error?: string }> {
+  if (!isSupabaseConfigured || !supabase) return { saved: [] };
+  if (items.length === 0) return { saved: [] };
+
+  // Single batch INSERT instead of one request per question: a lone request
+  // per row (the previous approach) meant a mid-batch network hiccup or
+  // browser tab throttling silently dropped the rest with no visible error —
+  // this way the whole batch succeeds or fails together as one statement.
+  const questionRows = items.map((item, idx) => ({
+    section_id: item.section_id,
+    question_text: item.question_text,
+    explanation: item.explanation,
+    order: item.order ?? idx + 1,
+    image_url: item.image_url || null,
+    answer_format: item.answer_format || 'mcq',
+    dimensi_personaliti: item.dimensi_personaliti || null,
+    aras_kesukaran: item.aras_kesukaran ?? null,
+  }));
+
+  const { data: qData, error: qErr } = await supabase.from('pksk_questions').insert(questionRows).select();
+  if (qErr || !qData) {
+    console.warn('Failed to bulk insert PKSK questions:', qErr);
+    return { saved: [], error: qErr?.message || 'Tiada data dikembalikan.' };
   }
-  return results;
+
+  const choiceRows: { question_id: string; option_text: string; is_correct: boolean; nilai_skala: number | null }[] = [];
+  qData.forEach((q: any, idx: number) => {
+    for (const c of items[idx].choices) {
+      choiceRows.push({
+        question_id: q.id,
+        option_text: c.text,
+        is_correct: c.correct,
+        nilai_skala: c.nilai_skala ?? null,
+      });
+    }
+  });
+
+  const { data: cData, error: cErr } = await supabase.from('pksk_choices').insert(choiceRows).select();
+  if (cErr) console.warn('Failed to bulk insert PKSK choices (questions were already inserted):', cErr);
+
+  const choicesByQuestion = new Map<string, Choice[]>();
+  (cData || []).forEach((c: any) => {
+    const list = choicesByQuestion.get(c.question_id) || [];
+    list.push({
+      id: c.id,
+      question_id: c.question_id,
+      option_text: c.option_text,
+      is_correct: Boolean(c.is_correct),
+      nilai_skala: c.nilai_skala ?? undefined,
+    });
+    choicesByQuestion.set(c.question_id, list);
+  });
+
+  const saved: Question[] = qData.map((q: any) => ({
+    id: q.id,
+    section_id: q.section_id,
+    question_text: q.question_text,
+    explanation: q.explanation,
+    order: q.order,
+    choices: choicesByQuestion.get(q.id) || [],
+    image_url: q.image_url || undefined,
+    answer_format: q.answer_format as Question['answer_format'],
+    dimensi_personaliti: q.dimensi_personaliti || undefined,
+    aras_kesukaran: q.aras_kesukaran ?? undefined,
+  }));
+
+  return { saved, error: cErr ? cErr.message : undefined };
 }
 
 // ------------------------- PKSK attempt & scoring -------------------------

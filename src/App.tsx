@@ -25,6 +25,7 @@ import {
   savePkskMixedExamAttempt,
   PkskExamTingkatan,
   shuffleArray,
+  isSupabaseConfigured,
 } from './lib/supabase';
 import { soundManager } from './lib/audio';
 
@@ -510,7 +511,7 @@ export default function App() {
     await deleteQuestionFromSupabase(questionId);
   };
 
-  const handleBulkAddQuestions = async (newQuestions: Question[]) => {
+  const handleBulkAddQuestions = async (newQuestions: Question[]): Promise<{ saved: number; total: number; error?: string }> => {
     if (adminActiveModule === 'pksk') {
       setPkskQuestions((prev) => [...newQuestions, ...prev]);
 
@@ -518,13 +519,16 @@ export default function App() {
         section_id: q.section_id,
         question_text: q.question_text,
         explanation: q.explanation,
+        order: q.order,
         answer_format: q.answer_format,
         dimensi_personaliti: q.dimensi_personaliti,
         aras_kesukaran: q.aras_kesukaran,
         image_url: q.image_url,
         choices: q.choices.map((c) => ({ text: c.option_text, correct: c.is_correct, nilai_skala: c.nilai_skala })),
       }));
-      const saved = await bulkAddPkskQuestionsToSupabase(payload);
+      if (!isSupabaseConfigured) return { saved: newQuestions.length, total: newQuestions.length };
+
+      const { saved, error } = await bulkAddPkskQuestionsToSupabase(payload);
       if (saved.length > 0) {
         setPkskQuestions((prev) => {
           const tempIds = new Set(newQuestions.map((q) => q.id));
@@ -532,10 +536,12 @@ export default function App() {
           return [...saved, ...withoutTemps];
         });
       }
-      return;
+      return { saved: saved.length, total: newQuestions.length, error };
     }
 
     setQuestions((prev) => [...newQuestions, ...prev]);
+
+    if (!isSupabaseConfigured) return { saved: newQuestions.length, total: newQuestions.length };
 
     const payload = newQuestions.map((q) => ({
       section_id: q.section_id,
@@ -553,6 +559,8 @@ export default function App() {
         return [...saved, ...withoutTemps];
       });
     }
+    return { saved: saved.length, total: newQuestions.length };
+    return { saved: saved.length, total: newQuestions.length };
   };
 
   const handleLogout = () => {
