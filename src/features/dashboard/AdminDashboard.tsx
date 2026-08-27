@@ -222,6 +222,16 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
   const [questionSubjectFilter, setQuestionSubjectFilter] = useState<string>('all');
   const [questionPaperFilter, setQuestionPaperFilter] = useState<string>('all');
   const [questionSectionFilter, setQuestionSectionFilter] = useState<string>('all');
+  // PKSK-only: Bahagian A/B isn't a stored column — derived from the same
+  // nilai_skala-presence signal savePkskMixedExamAttempt uses for scoring
+  // (weighted choices = Bahagian A, binary is_correct = Bahagian B), so this
+  // filter can never drift out of sync with how exam attempts actually get
+  // scored. Aras Kesukaran is a real column, filtered directly.
+  const [questionBahagianFilter, setQuestionBahagianFilter] = useState<'all' | 'A' | 'B'>('all');
+  const [questionArasFilter, setQuestionArasFilter] = useState<'all' | 1 | 2 | 3>('all');
+
+  const getBahagianForQuestion = (q: Question): 'A' | 'B' =>
+    q.choices.some((c) => c.nilai_skala != null) ? 'A' : 'B';
 
   const getSubjectForQuestion = (q: Question): Subject | undefined => {
     const sec = moduleSections.find((s) => s.id === q.section_id);
@@ -293,6 +303,12 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
         if (paper?.id !== questionPaperFilter) return false;
       }
       if (questionSectionFilter !== 'all' && q.section_id !== questionSectionFilter) {
+        return false;
+      }
+      if (isPkskModule && questionBahagianFilter !== 'all' && getBahagianForQuestion(q) !== questionBahagianFilter) {
+        return false;
+      }
+      if (isPkskModule && questionArasFilter !== 'all' && q.aras_kesukaran !== questionArasFilter) {
         return false;
       }
       if (questionSearch.trim()) {
@@ -871,6 +887,29 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
                         <option key={s.id} value={s.id}>{s.title}</option>
                       ))}
                     </select>
+                    {isPkskModule && (
+                      <>
+                        <select
+                          value={questionBahagianFilter}
+                          onChange={(e) => setQuestionBahagianFilter(e.target.value as 'all' | 'A' | 'B')}
+                          className="w-full sm:w-32 bg-cream-100 border border-sand-300 text-ink-900 text-xs rounded-xl px-3 py-2 outline-none focus:border-mist-400 truncate"
+                        >
+                          <option value="all">Semua Bahagian</option>
+                          <option value="A">Bahagian A</option>
+                          <option value="B">Bahagian B</option>
+                        </select>
+                        <select
+                          value={questionArasFilter}
+                          onChange={(e) => setQuestionArasFilter(e.target.value === 'all' ? 'all' : (Number(e.target.value) as 1 | 2 | 3))}
+                          className="w-full sm:w-36 bg-cream-100 border border-sand-300 text-ink-900 text-xs rounded-xl px-3 py-2 outline-none focus:border-mist-400 truncate"
+                        >
+                          <option value="all">Semua Aras</option>
+                          <option value="1">Aras 1 (Mudah)</option>
+                          <option value="2">Aras 2 (Sederhana)</option>
+                          <option value="3">Aras 3 (Sukar)</option>
+                        </select>
+                      </>
+                    )}
                   </div>
 
                   <div className="space-y-2 max-h-80 overflow-y-auto pr-1">

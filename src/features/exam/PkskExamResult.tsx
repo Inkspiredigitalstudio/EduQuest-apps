@@ -1,7 +1,7 @@
 import React, { useEffect } from 'react';
 import confetti from 'canvas-confetti';
 import { soundManager } from '../../lib/audio';
-import { Trophy, Home, Sparkles } from 'lucide-react';
+import { Trophy, Home, Sparkles, Medal } from 'lucide-react';
 
 interface PkskExamResultProps {
   markahA: number | null;
@@ -10,11 +10,25 @@ interface PkskExamResultProps {
   onGoDashboard: () => void;
 }
 
+// Bahagian C (Artikulasi) isn't part of this 90-minute A+B sitting, so the
+// tier uses only A/B's relative weight (20/70 of the confirmed 20/70/10
+// split), normalized back to 100 — not the full jumlah_markah formula.
+type Tier = { label: string; medal: string; colorClass: string };
+
+function getTier(overall: number): Tier {
+  if (overall >= 90) return { label: 'Cemerlang!', medal: '🥇', colorClass: 'text-honey-500 bg-honey-100' };
+  if (overall >= 70) return { label: 'Mantap!', medal: '🥈', colorClass: 'text-mist-600 bg-mist-100' };
+  return { label: 'Usaha Lagi!', medal: '🥉', colorClass: 'text-clay-500 bg-clay-100' };
+}
+
 // Result screen for PKSK's mixed 100-question Exam Mode (doc:
 // PKSK_Structural_Revision.md #2/#5) — deliberately separate from the shared
 // ResultScreen.tsx, which assumes one attempt = one section (next-section
 // button, single paper/subject) and doesn't fit a Bahagian A+B mixed sitting.
 export const PkskExamResult: React.FC<PkskExamResultProps> = ({ markahA, markahB, totalQuestions, onGoDashboard }) => {
+  const overall = markahA !== null && markahB !== null ? Math.round((markahA * 0.2 + markahB * 0.7) / 0.9) : null;
+  const tier = overall !== null ? getTier(overall) : null;
+
   useEffect(() => {
     soundManager.playLevelUp();
     try {
@@ -40,6 +54,13 @@ export const PkskExamResult: React.FC<PkskExamResultProps> = ({ markahA, markahB
           <h1 className="text-xl sm:text-2xl font-display font-bold text-ink-900">Exam PKSK Selesai!</h1>
           <p className="text-xs sm:text-sm text-ink-500">{totalQuestions} soalan telah dijawab — Bahagian A & B.</p>
         </div>
+        {tier && (
+          <div className={`inline-flex items-center gap-2 px-4 py-2 rounded-full font-bold text-sm ${tier.colorClass}`}>
+            <span className="text-lg" aria-hidden="true">{tier.medal}</span>
+            <span>{tier.label}</span>
+            <Medal className="w-4 h-4" />
+          </div>
+        )}
       </div>
 
       <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">

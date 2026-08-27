@@ -1566,6 +1566,15 @@ export function getPkskProgressList(userId: string): UserProgress[] {
 export const PKSK_EXAM_SET_PAPER_PREFIX = 'PKSK Exam';
 export type PkskExamTingkatan = 'Tahun 6' | 'Tingkatan 3';
 
+function shuffleArray<T>(arr: T[]): T[] {
+  const copy = [...arr];
+  for (let i = copy.length - 1; i > 0; i--) {
+    const j = Math.floor(Math.random() * (i + 1));
+    [copy[i], copy[j]] = [copy[j], copy[i]];
+  }
+  return copy;
+}
+
 export function getPkskExamSetQuestions(
   papers: Paper[],
   sections: Section[],
@@ -1579,7 +1588,18 @@ export function getPkskExamSetQuestions(
   const sectionIds = new Set(sections.filter((s) => s.paper_id === paper.id).map((s) => s.id));
   const examQuestions = questions.filter((q) => sectionIds.has(q.section_id));
   if (examQuestions.length === 0) return null;
-  return { paper, questions: examQuestions };
+
+  // Confirmed (v2 blueprint): Bahagian A (soalan 1-30, weighted nilai_skala
+  // choices) stays a fixed, un-shuffled block — Insaniah then Psikometrik, in
+  // whatever order the sections themselves were fetched (already "order"-
+  // sorted). Bahagian B (soalan 31-100, binary is_correct) is shuffled across
+  // subjects. Same nilai_skala-presence signal used for scoring drives this
+  // split, so the two never drift out of sync.
+  const bahagianA = examQuestions.filter((q) => q.choices.some((c) => c.nilai_skala != null));
+  const bahagianB = examQuestions.filter((q) => !q.choices.some((c) => c.nilai_skala != null));
+  const orderedQuestions = [...bahagianA, ...shuffleArray(bahagianB)];
+
+  return { paper, questions: orderedQuestions };
 }
 
 // Bahagian A/B scoring style is data-driven, not name-matched: a question
