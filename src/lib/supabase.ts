@@ -1566,7 +1566,7 @@ export function getPkskProgressList(userId: string): UserProgress[] {
 export const PKSK_EXAM_SET_PAPER_PREFIX = 'PKSK Exam';
 export type PkskExamTingkatan = 'Tahun 6' | 'Tingkatan 3';
 
-function shuffleArray<T>(arr: T[]): T[] {
+export function shuffleArray<T>(arr: T[]): T[] {
   const copy = [...arr];
   for (let i = copy.length - 1; i > 0; i--) {
     const j = Math.floor(Math.random() * (i + 1));

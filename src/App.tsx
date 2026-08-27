@@ -24,6 +24,7 @@ import {
   getPkskExamSetQuestions,
   savePkskMixedExamAttempt,
   PkskExamTingkatan,
+  shuffleArray,
 } from './lib/supabase';
 import { soundManager } from './lib/audio';
 
@@ -37,6 +38,8 @@ import { ExamScreen } from './components/ExamScreen';
 import { ResultScreen } from './components/ResultScreen';
 import { PkskExamResult } from './features/exam/PkskExamResult';
 import { PkskExamLevelPicker } from './features/exam/PkskExamLevelPicker';
+import { PkskPracticeSetup } from './features/exam/PkskPracticeSetup';
+import { PkskPracticeResult } from './features/exam/PkskPracticeResult';
 import { ProfileModal } from './components/ProfileModal';
 import { ParentDashboard } from './components/ParentDashboard';
 import { AdminDashboard } from './components/AdminDashboard';
@@ -86,6 +89,8 @@ export default function App() {
     | 'pksk-exam-level'
     | 'pksk-exam'
     | 'pksk-exam-result'
+    | 'pksk-practice-setup'
+    | 'pksk-practice-result'
   >('dashboard');
   const [activeNavTab, setActiveNavTab] = useState<'home' | 'battle' | 'achievements' | 'leaderboard' | 'profile'>('home');
 
@@ -136,6 +141,17 @@ export default function App() {
   // A+B sitting, separate from Practice Mode's per-section flow above.
   const [pkskExamQuestions, setPkskExamQuestions] = useState<Question[]>([]);
   const [pkskExamResult, setPkskExamResult] = useState<{ markahA: number | null; markahB: number | null } | null>(null);
+
+  // PKSK Practice Mode session (v2 restructure doc #1/#4) — Aras Kesukaran +
+  // Panjang Sesi (Warm Up/Sprint/Marathon) -limited question set, separate
+  // from both the full-section browsing above and the mixed Exam Mode below.
+  const [pkskPracticeQuestions, setPkskPracticeQuestions] = useState<Question[]>([]);
+  const [pkskPracticeResult, setPkskPracticeResult] = useState<{
+    percent: number;
+    totalAnswered: number;
+    totalQuestions: number;
+    wasPartial: boolean;
+  } | null>(null);
 
   // Which module the current subject/section/exam selection belongs to —
   // decided at selection time by checking which dataset the id came from,
@@ -259,7 +275,9 @@ export default function App() {
     setActiveModule(isPksk ? 'pksk' : 'sppim');
     setActivePaper(paper);
     setActiveSection(section);
-    setView('exam');
+    // PKSK Practice Mode goes through the Aras Kesukaran + Panjang Sesi
+    // picker first (doc #1/#4) — SPPIM keeps going straight into the exam.
+    setView(isPksk ? 'pksk-practice-setup' : 'exam');
   };
 
   const handleCompleteExam = async (
@@ -303,36 +321,81 @@ export default function App() {
     setView('result');
   };
 
-  // PKSK completion — writes to exam_attempts/exam_attempt_questions/
-  // pksk_results (via savePkskAttempt), NOT saveAttempt/updateUserStats.
-  // PKSK has no coin/XP reward system, so those two params are accepted
+  const pkskTingkatanLabel = (u: UserProfile) =>
+    u.school_form ? `Tingkatan ${u.school_form}` : u.school_year ? `Tahun ${u.school_year}` : 'Tidak dinyatakan';
+
+  // PKSK Practice completion — writes to exam_attempts/exam_attempt_questions/
+  // pksk_results (via savePkskAttempt), NOT saveAttempt/updateUserStats. PKSK
+  // has no coin/XP reward system, so those two params are accepted
   // (ExamScreen's onCompleteExam signature is shared/generic) but ignored.
+  // Scores against pkskPracticeQuestions (the Aras Kesukaran + Panjang Sesi
+  // -limited set from handleStartPkskPractice), not every question in the
+  // section — see PKSK v2 restructure doc #1/#4.
   const handleCompletePkskExam = async (
-    score: number,
-    total: number,
+    _score: number,
+    _total: number,
     _coinsEarned: number,
     _xpEarned: number,
     answersMap: Record<string, string>
   ) => {
     if (!activeSection || !activeSubject || !user) return;
 
-    const tingkatan = user.school_form
-      ? `Tingkatan ${user.school_form}`
-      : user.school_year
-      ? `Tahun ${user.school_year}`
-      : 'Tidak dinyatakan';
-
-    await savePkskAttempt({
+    const result = await savePkskAttempt({
       user_id: user.id,
-      tingkatan,
+      tingkatan: pkskTingkatanLabel(user),
       subject: activeSubject,
       section: activeSection,
-      questions: pkskQuestions.filter((q) => q.section_id === activeSection.id),
+      questions: pkskPracticeQuestions,
       answersMap,
     });
 
-    setLastExamResult({ score, total, coinsEarned: 0, xpEarned: 0, answersMap });
-    setView('result');
+    setPkskPracticeResult({
+      percent: result?.percent ?? 0,
+      totalAnswered: Object.keys(answersMap).length,
+      totalQuestions: pkskPracticeQuestions.length,
+      wasPartial: false,
+    });
+    setView('pksk-practice-result');
+  };
+
+  // Student exited a Practice session early ("Keluar") — save whatever was
+  // answered as a valid attempt instead of discarding it (doc #4: progress
+  // is always kept, even mid-block).
+  const handleExitPkskPracticeEarly = async (answersMap: Record<string, string>) => {
+    if (!activeSection || !activeSubject || !user) {
+      setView('subject');
+      return;
+    }
+
+    const result = await savePkskAttempt({
+      user_id: user.id,
+      tingkatan: pkskTingkatanLabel(user),
+      subject: activeSubject,
+      section: activeSection,
+      questions: pkskPracticeQuestions,
+      answersMap,
+    });
+
+    setPkskPracticeResult({
+      percent: result?.percent ?? 0,
+      totalAnswered: Object.keys(answersMap).length,
+      totalQuestions: pkskPracticeQuestions.length,
+      wasPartial: true,
+    });
+    setView('pksk-practice-result');
+  };
+
+  // Aras Kesukaran + Panjang Sesi picked (PkskPracticeSetup) — pull matching
+  // questions from this section, shuffle, cap to the block size. A thin bank
+  // just yields a shorter-than-nominal session rather than blocking outright.
+  // _timerOn: accepted from the setup screen's toggle but not yet enforced —
+  // ExamScreen has no countdown UI/auto-submit infra at all today (same gap
+  // flagged for Exam Mode's 90-minute timer). Follow-up, not scope creep here.
+  const handleStartPkskPractice = (aras: 1 | 2 | 3, panjang: 15 | 25 | 50, _timerOn: boolean) => {
+    if (!activeSection) return;
+    const atAras = pkskQuestions.filter((q) => q.section_id === activeSection.id && q.aras_kesukaran === aras);
+    setPkskPracticeQuestions(shuffleArray(atAras).slice(0, panjang));
+    setView('exam');
   };
 
   // PKSK Exam Mode entry point — shows the Tahun 6 / Tingkatan 3 picker
@@ -498,8 +561,13 @@ export default function App() {
     setView('dashboard');
   };
 
+  // PKSK Practice always goes through pkskPracticeQuestions (the Aras
+  // Kesukaran + Panjang Sesi -limited set) — SPPIM keeps browsing the whole
+  // section's questions directly, unchanged.
   const activeQuestions = activeSection
-    ? (activeModule === 'pksk' ? pkskQuestions : questions).filter((q) => q.section_id === activeSection.id)
+    ? activeModule === 'pksk'
+      ? pkskPracticeQuestions
+      : questions.filter((q) => q.section_id === activeSection.id)
     : [];
 
   // ---------------------------------------------------------------------
@@ -656,8 +724,30 @@ export default function App() {
             user={user}
             onCompleteExam={activeModule === 'pksk' ? handleCompletePkskExam : handleCompleteExam}
             onCancel={() => setView('subject')}
+            onExitEarly={activeModule === 'pksk' ? handleExitPkskPracticeEarly : undefined}
             explanationLabel={activeModule === 'pksk' ? 'Penerangan:' : undefined}
             module={activeModule}
+          />
+        )}
+
+        {view === 'pksk-practice-setup' && activeSection && (
+          <PkskPracticeSetup
+            sectionName={activeSection.name.replace(/^bank\s+/i, '')}
+            questions={pkskQuestions.filter((q) => q.section_id === activeSection.id)}
+            onStart={handleStartPkskPractice}
+            onBack={() => setView('subject')}
+          />
+        )}
+
+        {view === 'pksk-practice-result' && pkskPracticeResult && activeSection && (
+          <PkskPracticeResult
+            percent={pkskPracticeResult.percent}
+            sectionName={activeSection.name.replace(/^bank\s+/i, '')}
+            totalAnswered={pkskPracticeResult.totalAnswered}
+            totalQuestions={pkskPracticeResult.totalQuestions}
+            wasPartial={pkskPracticeResult.wasPartial}
+            onContinue={() => setView('pksk-practice-setup')}
+            onGoDashboard={() => setView('dashboard')}
           />
         )}
 

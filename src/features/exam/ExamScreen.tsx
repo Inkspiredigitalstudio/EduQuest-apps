@@ -23,6 +23,12 @@ interface ExamScreenProps {
   // PKSK, instead of showing "Bahagian Bank Insaniah 2026" (see PKSK v2
   // restructure doc #2). SPPIM is unaffected by leaving this unset.
   module?: 'sppim' | 'pksk';
+  // When set, exiting mid-session calls this with whatever was answered so
+  // far instead of onCancel — lets the caller save a partial attempt
+  // (PKSK Practice Mode: doc #4, "progress yang dah dibuat sentiasa
+  // disimpan... walaupun pelajar stop di tengah"). Falls back to onCancel
+  // (discard, no save) when unset — SPPIM and PKSK Exam Mode are unaffected.
+  onExitEarly?: (answersMap: Record<string, string>) => void;
 }
 
 function shuffleQuestionsChoices(questions: Question[]): Question[] {
@@ -84,6 +90,7 @@ export const ExamScreen: React.FC<ExamScreenProps> = ({
   explanationLabel = 'Penerangan Hukum & Dalil:',
   mode = 'practice',
   module = 'sppim',
+  onExitEarly,
 }) => {
   const questions = useMemo(() => shuffleQuestionsChoices(rawQuestions), [rawQuestions]);
 
@@ -211,7 +218,14 @@ export const ExamScreen: React.FC<ExamScreenProps> = ({
         <button
           onClick={() => {
             soundManager.playClick();
-            if (confirm('Adakah anda pasti mahu keluar? Kemajuan latihan ini akan dibatalkan.')) {
+            const hasAnswers = Object.keys(answersMap).length > 0;
+            const confirmMsg = onExitEarly && hasAnswers
+              ? 'Adakah anda pasti mahu keluar? Jawapan yang dah dibuat akan disimpan.'
+              : 'Adakah anda pasti mahu keluar? Kemajuan latihan ini akan dibatalkan.';
+            if (!confirm(confirmMsg)) return;
+            if (onExitEarly && hasAnswers) {
+              onExitEarly(answersMap);
+            } else {
               onCancel();
             }
           }}
