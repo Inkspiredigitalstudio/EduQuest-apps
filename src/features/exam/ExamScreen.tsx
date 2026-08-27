@@ -17,6 +17,12 @@ interface ExamScreenProps {
   // students can't infer Bahagian A vs B from the label. 'practice' (default)
   // keeps today's behaviour: student already picked this section themselves.
   mode?: 'practice' | 'exam';
+  // PKSK section names are subject categories ("Kecerdasan Insaniah",
+  // "Matematik"), not exam-paper letters like SPPIM's — so the practice
+  // label drops the "Bahagian" prefix and any leftover "Bank " naming for
+  // PKSK, instead of showing "Bahagian Bank Insaniah 2026" (see PKSK v2
+  // restructure doc #2). SPPIM is unaffected by leaving this unset.
+  module?: 'sppim' | 'pksk';
 }
 
 function shuffleQuestionsChoices(questions: Question[]): Question[] {
@@ -77,6 +83,7 @@ export const ExamScreen: React.FC<ExamScreenProps> = ({
   onCancel,
   explanationLabel = 'Penerangan Hukum & Dalil:',
   mode = 'practice',
+  module = 'sppim',
 }) => {
   const questions = useMemo(() => shuffleQuestionsChoices(rawQuestions), [rawQuestions]);
 
@@ -215,11 +222,14 @@ export const ExamScreen: React.FC<ExamScreenProps> = ({
         </button>
 
         <div className="flex-1 max-w-xs text-center space-y-1">
-          <div className="text-xs font-bold text-mist-600">
+          <div className={`text-xs font-bold ${mode === 'exam' ? 'text-grape-600' : 'text-mist-600'}`}>
             Soalan {currentIndex + 1} daripada {questions.length}
           </div>
           <div className="w-full bg-cream-200 h-2.5 rounded-full overflow-hidden">
-            <div className="bg-mist-500 h-full rounded-full transition-all duration-300" style={{ width: `${progressPercent}%` }} />
+            <div
+              className={`h-full rounded-full transition-all duration-300 ${mode === 'exam' ? 'bg-grape-500' : 'bg-mist-500'}`}
+              style={{ width: `${progressPercent}%` }}
+            />
           </div>
         </div>
 
@@ -239,9 +249,11 @@ export const ExamScreen: React.FC<ExamScreenProps> = ({
       <div className="bg-cream-50 border border-sand-200 rounded-3xl p-6 sm:p-8 space-y-6">
         <div className="space-y-3">
           <div className="flex items-center justify-between text-xs font-bold text-ink-500">
-            <span className="uppercase tracking-wide text-mist-600 bg-mist-100 px-2.5 py-1 rounded-lg">
+            <span className={`uppercase tracking-wide px-2.5 py-1 rounded-lg ${mode === 'exam' ? 'text-grape-600 bg-grape-100' : 'text-mist-600 bg-mist-100'}`}>
               {mode === 'exam' || !section
                 ? `Soalan ${currentIndex + 1} / ${questions.length}`
+                : module === 'pksk'
+                ? `${section.name.replace(/^bank\s+/i, '')} • Soalan ${currentQuestion.order}`
                 : `Bahagian ${section.name} • Soalan ${currentQuestion.order}`}
             </span>
             <span>{isWeightedQuestion ? 'Pilih jawapan yang PALING menggambarkan diri anda' : 'Pilih SATU jawapan yang betul'}</span>

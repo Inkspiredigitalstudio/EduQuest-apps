@@ -329,10 +329,10 @@ export const Dashboard: React.FC<DashboardProps> = ({
               soundManager.playClick();
               onOpenPkskExam();
             }}
-            className="w-full text-left rounded-3xl bg-clay-100 hover:bg-clay-200/70 border border-clay-200 p-4 sm:p-5 flex items-center justify-between gap-4 transition-colors"
+            className="w-full text-left rounded-3xl bg-grape-100 hover:bg-grape-200/70 border border-grape-200 p-4 sm:p-5 flex items-center justify-between gap-4 transition-colors"
           >
             <div className="flex items-center gap-3.5 min-w-0">
-              <div className="w-12 h-12 rounded-2xl bg-cream-50 text-clay-500 shadow-sm flex items-center justify-center shrink-0">
+              <div className="w-12 h-12 rounded-2xl bg-cream-50 text-grape-500 shadow-sm flex items-center justify-center shrink-0">
                 <Target className="w-6 h-6" />
               </div>
               <div className="min-w-0">
@@ -340,7 +340,7 @@ export const Dashboard: React.FC<DashboardProps> = ({
                 <p className="text-xs sm:text-sm text-ink-500">100 soalan bercampur • 90 minit • satu sitting sebenar.</p>
               </div>
             </div>
-            <ArrowRight className="w-5 h-5 text-clay-500 shrink-0" />
+            <ArrowRight className="w-5 h-5 text-grape-500 shrink-0" />
           </button>
         )}
 
@@ -362,7 +362,7 @@ export const Dashboard: React.FC<DashboardProps> = ({
         ) : activeModuleTab === 'pksk' ? (
           <div className="space-y-4">
             {pkskSubjects && pkskSubjects.length > 0 ? (
-              <SubjectGrid subjects={pkskSubjects} papers={pkskPapers} onSelect={onSelectSubject} />
+              <SubjectGrid subjects={pkskSubjects} papers={pkskPapers} onSelect={onSelectSubject} layout="list" />
             ) : (
               <div className="bg-cream-50 border border-sand-200 rounded-3xl p-6 text-center space-y-3 my-2">
                 <div className="w-12 h-12 rounded-2xl bg-cream-100 flex items-center justify-center mx-auto text-ink-500">

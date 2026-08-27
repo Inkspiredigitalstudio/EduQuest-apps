@@ -621,6 +621,7 @@ export default function App() {
             questions={pkskExamQuestions}
             user={user}
             mode="exam"
+            module="pksk"
             onCompleteExam={handleCompletePkskMixedExam}
             onCancel={() => setView('dashboard')}
             explanationLabel="Penerangan:"
@@ -644,6 +645,7 @@ export default function App() {
             userProgress={userProgress}
             onBack={() => setView('dashboard')}
             onSelectSection={handleSelectSection}
+            module={activeModule}
           />
         )}
 
@@ -655,6 +657,7 @@ export default function App() {
             onCompleteExam={activeModule === 'pksk' ? handleCompletePkskExam : handleCompleteExam}
             onCancel={() => setView('subject')}
             explanationLabel={activeModule === 'pksk' ? 'Penerangan:' : undefined}
+            module={activeModule}
           />
         )}
 

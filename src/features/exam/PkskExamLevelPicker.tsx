@@ -46,12 +46,12 @@ export const PkskExamLevelPicker: React.FC<PkskExamLevelPickerProps> = ({ readyL
               }}
               className={`rounded-3xl p-6 text-center space-y-2 border transition-colors ${
                 isReady
-                  ? 'bg-cream-50 hover:bg-mist-100 border-sand-200 hover:border-mist-300'
+                  ? 'bg-cream-50 hover:bg-grape-100 border-sand-200 hover:border-grape-300'
                   : 'bg-cream-100 border-sand-200 opacity-60 cursor-not-allowed'
               }`}
             >
               {isReady ? (
-                <GraduationCap className="w-8 h-8 text-mist-600 mx-auto" />
+                <GraduationCap className="w-8 h-8 text-grape-600 mx-auto" />
               ) : (
                 <Lock className="w-8 h-8 text-ink-300 mx-auto" />
               )}
