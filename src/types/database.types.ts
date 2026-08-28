@@ -28,6 +28,11 @@ export interface Subject {
   description: string;
   status: 'active' | 'locked';
   color: string;
+  // PKSK-only: which Practice Mode section a subject is grouped under.
+  // Bahagian A (Insaniah/Psikometrik) is open to every tingkatan; Bahagian B
+  // (BM/English/Matematik/Sains/...) content differs by tingkatan, so its
+  // papers carry Paper.tingkatan. Undefined for SPPIM subjects.
+  bahagian?: 'A' | 'B' | 'C';
 }
 
 export interface Paper {
@@ -36,6 +41,10 @@ export interface Paper {
   year: number | string;
   title: string;
   status: 'active' | 'locked';
+  // PKSK Bahagian B only: which tingkatan this paper's content targets.
+  // Undefined/null means open to all tingkatan (Bahagian A papers, and
+  // every SPPIM paper).
+  tingkatan?: 'Tahun 6' | 'Tingkatan 3';
 }
 
 export interface Section {

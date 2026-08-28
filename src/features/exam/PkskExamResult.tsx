@@ -1,6 +1,7 @@
 import React, { useEffect } from 'react';
 import confetti from 'canvas-confetti';
 import { soundManager } from '../../lib/audio';
+import { getPkskTier } from '../../lib/pkskTier';
 import { Trophy, Home, Sparkles, Medal } from 'lucide-react';
 
 interface PkskExamResultProps {
@@ -10,24 +11,16 @@ interface PkskExamResultProps {
   onGoDashboard: () => void;
 }
 
-// Bahagian C (Artikulasi) isn't part of this 90-minute A+B sitting, so the
-// tier uses only A/B's relative weight (20/70 of the confirmed 20/70/10
-// split), normalized back to 100 — not the full jumlah_markah formula.
-type Tier = { label: string; medal: string; colorClass: string };
-
-function getTier(overall: number): Tier {
-  if (overall >= 90) return { label: 'Cemerlang!', medal: '🥇', colorClass: 'text-honey-500 bg-honey-100' };
-  if (overall >= 70) return { label: 'Mantap!', medal: '🥈', colorClass: 'text-mist-600 bg-mist-100' };
-  return { label: 'Usaha Lagi!', medal: '🥉', colorClass: 'text-clay-500 bg-clay-100' };
-}
-
 // Result screen for PKSK's mixed 100-question Exam Mode (doc:
 // PKSK_Structural_Revision.md #2/#5) — deliberately separate from the shared
 // ResultScreen.tsx, which assumes one attempt = one section (next-section
 // button, single paper/subject) and doesn't fit a Bahagian A+B mixed sitting.
 export const PkskExamResult: React.FC<PkskExamResultProps> = ({ markahA, markahB, totalQuestions, onGoDashboard }) => {
+  // Bahagian C (Artikulasi) isn't part of this 90-minute A+B sitting, so the
+  // tier uses only A/B's relative weight (20/70 of the confirmed 20/70/10
+  // split), normalized back to 100 — not the full jumlah_markah formula.
   const overall = markahA !== null && markahB !== null ? Math.round((markahA * 0.2 + markahB * 0.7) / 0.9) : null;
-  const tier = overall !== null ? getTier(overall) : null;
+  const tier = overall !== null ? getPkskTier(overall) : null;
 
   useEffect(() => {
     soundManager.playLevelUp();
