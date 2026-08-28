@@ -1620,7 +1620,7 @@ export function getPkskProgressList(userId: string): UserProgress[] {
 // one of the 3 Aras labels below to keep working.)
 export const PKSK_EXAM_SET_PAPER_PREFIX = 'PKSK Exam';
 export type PkskExamTingkatan = 'Tahun 6' | 'Tingkatan 3';
-export type PkskExamAras = 'Mudah' | 'Sederhana' | 'Sukar';
+export type PkskExamAras = 'Mudah' | 'Sederhana' | 'Tinggi';
 
 export function shuffleArray<T>(arr: T[]): T[] {
   const copy = [...arr];

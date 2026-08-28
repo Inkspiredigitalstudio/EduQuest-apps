@@ -42,6 +42,9 @@ import { PkskExamResult } from './features/exam/PkskExamResult';
 import { PkskExamLevelPicker } from './features/exam/PkskExamLevelPicker';
 import { PkskPracticeSetup } from './features/exam/PkskPracticeSetup';
 import { PkskPracticeResult } from './features/exam/PkskPracticeResult';
+import { PkskModPicker } from './features/exam/PkskModPicker';
+import { PkskBahagianPicker } from './features/exam/PkskBahagianPicker';
+import { PkskMataPelajaranPicker } from './features/exam/PkskMataPelajaranPicker';
 import { ProfileModal } from './components/ProfileModal';
 import { ParentDashboard } from './components/ParentDashboard';
 import { AdminDashboard } from './components/AdminDashboard';
@@ -88,6 +91,9 @@ export default function App() {
     | 'exam'
     | 'result'
     | 'articulation'
+    | 'pksk-mod'
+    | 'pksk-bahagian'
+    | 'pksk-mata-pelajaran'
     | 'pksk-exam-level'
     | 'pksk-exam'
     | 'pksk-exam-result'
@@ -176,15 +182,34 @@ export default function App() {
     'Tahun 6': {
       Mudah: getPkskExamSetQuestions(pkskPapers, pkskSections, pkskQuestions, 'Tahun 6', 'Mudah') !== null,
       Sederhana: getPkskExamSetQuestions(pkskPapers, pkskSections, pkskQuestions, 'Tahun 6', 'Sederhana') !== null,
-      Sukar: getPkskExamSetQuestions(pkskPapers, pkskSections, pkskQuestions, 'Tahun 6', 'Sukar') !== null,
+      Tinggi: getPkskExamSetQuestions(pkskPapers, pkskSections, pkskQuestions, 'Tahun 6', 'Tinggi') !== null,
     },
     'Tingkatan 3': {
       Mudah: getPkskExamSetQuestions(pkskPapers, pkskSections, pkskQuestions, 'Tingkatan 3', 'Mudah') !== null,
       Sederhana: getPkskExamSetQuestions(pkskPapers, pkskSections, pkskQuestions, 'Tingkatan 3', 'Sederhana') !== null,
-      Sukar: getPkskExamSetQuestions(pkskPapers, pkskSections, pkskQuestions, 'Tingkatan 3', 'Sukar') !== null,
+      Tinggi: getPkskExamSetQuestions(pkskPapers, pkskSections, pkskQuestions, 'Tingkatan 3', 'Tinggi') !== null,
     },
   };
   const pkskExamSetReady = Object.values(pkskExamReadyByTingkatanAras).some((byAras) => Object.values(byAras).some(Boolean));
+  // Exam Mode readiness for whichever kategori the student already picked
+  // (PkskModPicker only needs this one, not the full tingkatan x aras matrix).
+  const pkskExamReadyForKategori = pkskKategoriPelajar
+    ? Object.values(pkskExamReadyByTingkatanAras[pkskKategoriPelajar]).some(Boolean)
+    : false;
+
+  // Mod Latihan v3 — Pilih Bahagian -> (Bahagian A: soalan general, no
+  // subject step) | (Bahagian B: Pilih Mata Pelajaran) -> Aras Kesukaran +
+  // Format Latihan (PkskPracticeSetup, unchanged). The question pool that
+  // screen filters is set explicitly here rather than always derived from
+  // activeSection, since Bahagian A's "general" pool spans multiple sections
+  // (Insaniah + Psikometrik) with no single section to point at.
+  const pkskBahagianASubjects = pkskSubjects.filter((s) => s.bahagian === 'A');
+  const pkskBahagianBSubjects = pkskSubjects.filter((s) => s.bahagian === 'B');
+  const pkskReadyBahagianBSubjectIds = new Set(
+    pkskBahagianBSubjects.filter((s) => pkskPapersForKategori.some((p) => p.subject_id === s.id)).map((s) => s.id)
+  );
+  const [pkskPracticeQuestionPool, setPkskPracticeQuestionPool] = useState<Question[]>([]);
+  const [pkskPracticeLabel, setPkskPracticeLabel] = useState('');
 
   // Which module the Admin question-bank editor currently has selected —
   // lifted here (rather than living only inside AdminDashboard) so
@@ -292,6 +317,68 @@ export default function App() {
     setActiveModule(isPksk ? 'pksk' : 'sppim');
     setActiveSubject(subject);
     setView('subject');
+  };
+
+  // PKSK v3 flow: Kategori Pelajar (Dashboard) -> Pilih Mod. Picking a
+  // kategori immediately advances into Pilih Mod — it's the shared root
+  // step for both Mod Latihan and Mod Peperiksaan, not a standalone choice.
+  const handlePickKategoriPelajar = (kategori: 'Tahun 6' | 'Tingkatan 3') => {
+    setPkskKategoriPelajar(kategori);
+    if (!user) {
+      setIsAuthOpen(true);
+      return;
+    }
+    setView('pksk-mod');
+  };
+
+  // Mod Latihan -> Pilih Bahagian. Bahagian A has no Mata Pelajaran step —
+  // "sistem terus menggunakan soalan General" (its 2 subjects' questions
+  // combined into one pool) — so it goes straight to Aras Kesukaran.
+  // Bahagian B still needs a subject pick first. Bahagian C is the existing
+  // Artikulasi Karangan screen.
+  const handlePickPkskBahagian = (bahagian: 'A' | 'B' | 'C') => {
+    if (bahagian === 'C') {
+      setView('articulation');
+      return;
+    }
+    if (bahagian === 'A') {
+      const bahagianAPaperIds = new Set(
+        pkskPapers.filter((p) => pkskBahagianASubjects.some((s) => s.id === p.subject_id)).map((p) => p.id)
+      );
+      const bahagianASectionIds = new Set(pkskSections.filter((sec) => bahagianAPaperIds.has(sec.paper_id)).map((sec) => sec.id));
+      const pool = pkskQuestions.filter((q) => bahagianASectionIds.has(q.section_id));
+      setPkskPracticeQuestionPool(pool);
+      setPkskPracticeLabel('Bahagian A — Soalan General');
+      // savePkskAttempt needs a real subject/section to attribute the attempt
+      // to — Bahagian A's pool spans 2 subjects, so it's attributed to
+      // whichever one has a section (Insaniah first); scoring itself is
+      // still computed against the full combined pool, unaffected by this.
+      const repSubject = pkskBahagianASubjects[0];
+      const repPaper = repSubject ? pkskPapers.find((p) => p.subject_id === repSubject.id) : undefined;
+      const repSection = repPaper ? pkskSections.find((sec) => sec.paper_id === repPaper.id) : undefined;
+      if (repSubject) setActiveSubject(repSubject);
+      if (repPaper) setActivePaper(repPaper);
+      if (repSection) setActiveSection(repSection);
+      setActiveModule('pksk');
+      setView('pksk-practice-setup');
+      return;
+    }
+    setView('pksk-mata-pelajaran');
+  };
+
+  const handlePickPkskMataPelajaran = (subject: Subject) => {
+    const paper = pkskPapersForKategori.find((p) => p.subject_id === subject.id);
+    if (!paper) return;
+    const section = pkskSections.find((sec) => sec.paper_id === paper.id);
+    if (!section) return;
+    const pool = pkskQuestions.filter((q) => q.section_id === section.id);
+    setPkskPracticeQuestionPool(pool);
+    setPkskPracticeLabel(subject.name);
+    setActiveModule('pksk');
+    setActiveSubject(subject);
+    setActivePaper(paper);
+    setActiveSection(section);
+    setView('pksk-practice-setup');
   };
 
   const handleSelectSection = (paper: Paper, section: Section) => {
@@ -420,16 +507,15 @@ export default function App() {
   // ExamScreen has no countdown UI/auto-submit infra at all today (same gap
   // flagged for Exam Mode's 90-minute timer). Follow-up, not scope creep here.
   const handleStartPkskPractice = (aras: 1 | 2 | 3, panjang: 15 | 25 | 50, _timerOn: boolean) => {
-    if (!activeSection) return;
-    const atAras = pkskQuestions.filter((q) => q.section_id === activeSection.id && q.aras_kesukaran === aras);
+    const atAras = pkskPracticeQuestionPool.filter((q) => q.aras_kesukaran === aras);
     setPkskPracticeQuestions(shuffleArray(atAras).slice(0, panjang));
     setView('exam');
   };
 
-  // PKSK Exam Mode entry point — shows the Tahun 6 / Tingkatan 3 picker
-  // (Dashboard's pkskExamSetReady gate keeps the "Exam PKSK" button hidden
-  // entirely if NEITHER level has a set yet; the picker itself locks out
-  // whichever individual level isn't ready).
+  // PKSK Exam Mode entry point — Kategori Pelajar (tingkatan) is already
+  // chosen upstream (shared with Mod Latihan), so this just opens the Tahap
+  // Kesukaran picker (Dashboard's/PkskModPicker's ready gate keeps this
+  // button locked out if the chosen kategori has no set at all yet).
   const handleOpenPkskExamPicker = () => {
     if (!user) {
       setIsAuthOpen(true);
@@ -438,17 +524,17 @@ export default function App() {
     setView('pksk-exam-level');
   };
 
-  // Pulls the pre-generated "PKSK Exam" set for the chosen tingkatan + aras
-  // kesukaran (doc: PKSK_Structural_Revision.md #6, no live question-
+  // Pulls the pre-generated "PKSK Exam" set for the chosen kategori (tingkatan)
+  // + tahap kesukaran (doc: PKSK_Structural_Revision.md #6, no live question-
   // selection algorithm). The level picker only enables combinations that
   // are ready, so reaching here with no questions shouldn't normally
   // happen — bail safely anyway.
-  const handleStartPkskExam = (level: PkskExamTingkatan, aras: PkskExamAras) => {
-    if (!user) {
+  const handleStartPkskExam = (aras: PkskExamAras) => {
+    if (!user || !pkskKategoriPelajar) {
       setIsAuthOpen(true);
       return;
     }
-    const examSet = getPkskExamSetQuestions(pkskPapers, pkskSections, pkskQuestions, level, aras);
+    const examSet = getPkskExamSetQuestions(pkskPapers, pkskSections, pkskQuestions, pkskKategoriPelajar, aras);
     if (!examSet) return;
     setPkskExamQuestions(examSet.questions);
     setActiveModule('pksk');
@@ -686,7 +772,7 @@ export default function App() {
             onSelectSubject={handleSelectSubject}
             onSelectSection={handleSelectSection}
             pkskKategoriPelajar={pkskKategoriPelajar}
-            onSetPkskKategoriPelajar={setPkskKategoriPelajar}
+            onSetPkskKategoriPelajar={handlePickKategoriPelajar}
             onOpenAuth={() => setIsAuthOpen(true)}
             onOpenProfile={() => setIsProfileOpen(true)}
             onOpenBattle={() => setIsBattleOpen(true)}
@@ -708,11 +794,40 @@ export default function App() {
           <ArticulationScreen user={user} onExit={() => setView('dashboard')} />
         )}
 
-        {view === 'pksk-exam-level' && (
-          <PkskExamLevelPicker
-            readyByTingkatanAras={pkskExamReadyByTingkatanAras}
-            onPick={handleStartPkskExam}
+        {view === 'pksk-mod' && pkskKategoriPelajar && (
+          <PkskModPicker
+            kategoriPelajar={pkskKategoriPelajar}
+            examModeReady={pkskExamReadyForKategori}
+            onPickLatihan={() => setView('pksk-bahagian')}
+            onPickPeperiksaan={handleOpenPkskExamPicker}
             onBack={() => setView('dashboard')}
+          />
+        )}
+
+        {view === 'pksk-bahagian' && pkskKategoriPelajar && (
+          <PkskBahagianPicker
+            kategoriPelajar={pkskKategoriPelajar}
+            onPickBahagian={handlePickPkskBahagian}
+            onBack={() => setView('pksk-mod')}
+          />
+        )}
+
+        {view === 'pksk-mata-pelajaran' && pkskKategoriPelajar && (
+          <PkskMataPelajaranPicker
+            kategoriPelajar={pkskKategoriPelajar}
+            subjects={pkskBahagianBSubjects}
+            readySubjectIds={pkskReadyBahagianBSubjectIds}
+            onPickSubject={handlePickPkskMataPelajaran}
+            onBack={() => setView('pksk-bahagian')}
+          />
+        )}
+
+        {view === 'pksk-exam-level' && pkskKategoriPelajar && (
+          <PkskExamLevelPicker
+            fixedTingkatan={pkskKategoriPelajar}
+            readyByAras={pkskExamReadyByTingkatanAras[pkskKategoriPelajar]}
+            onPick={handleStartPkskExam}
+            onBack={() => setView('pksk-mod')}
           />
         )}
 
@@ -762,19 +877,19 @@ export default function App() {
           />
         )}
 
-        {view === 'pksk-practice-setup' && activeSection && (
+        {view === 'pksk-practice-setup' && (
           <PkskPracticeSetup
-            sectionName={activeSection.name.replace(/^bank\s+/i, '')}
-            questions={pkskQuestions.filter((q) => q.section_id === activeSection.id)}
+            sectionName={pkskPracticeLabel}
+            questions={pkskPracticeQuestionPool}
             onStart={handleStartPkskPractice}
-            onBack={() => setView('subject')}
+            onBack={() => setView(activeSubject?.bahagian === 'A' ? 'pksk-bahagian' : 'pksk-mata-pelajaran')}
           />
         )}
 
-        {view === 'pksk-practice-result' && pkskPracticeResult && activeSection && (
+        {view === 'pksk-practice-result' && pkskPracticeResult && (
           <PkskPracticeResult
             percent={pkskPracticeResult.percent}
-            sectionName={activeSection.name.replace(/^bank\s+/i, '')}
+            sectionName={pkskPracticeLabel}
             totalAnswered={pkskPracticeResult.totalAnswered}
             totalQuestions={pkskPracticeResult.totalQuestions}
             wasPartial={pkskPracticeResult.wasPartial}

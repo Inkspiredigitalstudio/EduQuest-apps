@@ -2,7 +2,6 @@ import React from 'react';
 import { Subject, UserProfile, DailyMission, Paper, Section, UserProgress } from '../../types';
 import { soundManager } from '../../lib/audio';
 import { PendingLinksWidget } from './PendingLinksWidget';
-import { SubjectGrid } from './SubjectGrid';
 import {
   BookOpen,
   Heart,
@@ -15,7 +14,6 @@ import {
   Coins,
   Swords,
   Play,
-  PenSquare,
 } from 'lucide-react';
 
 interface DashboardProps {
@@ -121,8 +119,6 @@ export const Dashboard: React.FC<DashboardProps> = ({
   pkskUserProgress,
   userProgress,
   dailyMissions,
-  isContentLoading,
-  contentLoadFailed,
   onSelectSubject,
   onSelectSection,
   onOpenAuth,
@@ -133,10 +129,10 @@ export const Dashboard: React.FC<DashboardProps> = ({
   pkskKategoriPelajar,
   onSetPkskKategoriPelajar,
 }) => {
-  const [activeModuleTab, setActiveModuleTab] = React.useState<'sppim' | 'pksk' | 'uasa'>('sppim');
+  const [activeModuleTab, setActiveModuleTab] = React.useState<'sppim' | 'pksk' | 'uasa'>('pksk');
 
   const hubModules = [
-    { id: 'sppim', name: 'SPPIM', active: true },
+    { id: 'sppim', name: 'SPPIM', active: false },
     { id: 'pksk', name: 'PKSK', active: true },
     { id: 'uasa', name: 'UASA', active: false },
   ];
@@ -304,164 +300,69 @@ export const Dashboard: React.FC<DashboardProps> = ({
           })}
         </div>
 
-        {/* PKSK Practice Mode kategori — Bahagian A (Insaniah/Psikometrik) is
-            open to every tingkatan; Bahagian B's papers are tingkatan-tagged
-            and only appear once a kategori is picked here (App.tsx filters
-            pkskPapers accordingly before it reaches this component/SubjectView). */}
+        {/* PKSK root step: Pilih Kategori Pelajar. Everything else (Pilih
+            Mod, Pilih Bahagian, Mata Pelajaran, Aras Kesukaran, Exam Mode)
+            lives in its own dedicated screen once a kategori is picked
+            (App.tsx routes straight into pksk-mod) — this tab only ever
+            shows the gate itself, never subject content inline. */}
         {activeModuleTab === 'pksk' && (
-          <div className="flex items-center gap-2 flex-wrap">
-            <span className="text-xs font-bold text-ink-500">Kategori Pelajar:</span>
-            {(['Tahun 6', 'Tingkatan 3'] as const).map((k) => (
-              <button
-                key={k}
-                onClick={() => {
-                  soundManager.playClick();
-                  onSetPkskKategoriPelajar?.(k);
-                }}
-                className={`px-3 py-1.5 rounded-full text-xs font-bold border transition-colors ${
-                  pkskKategoriPelajar === k
-                    ? 'bg-grape-500 text-white border-grape-500'
-                    : 'bg-cream-50 hover:bg-cream-100 text-ink-500 border-sand-200'
-                }`}
-              >
-                {k}
-              </button>
-            ))}
+          <div className="bg-cream-50 border border-sand-200 rounded-3xl p-6 sm:p-8 text-center space-y-4">
+            <h2 className="text-base font-display font-bold text-ink-900">Pilih Kategori Pelajar</h2>
+            <div className="flex items-center justify-center gap-3">
+              {(['Tahun 6', 'Tingkatan 3'] as const).map((k) => (
+                <button
+                  key={k}
+                  onClick={() => {
+                    soundManager.playClick();
+                    onSetPkskKategoriPelajar?.(k);
+                  }}
+                  className="px-6 py-4 rounded-2xl text-sm font-bold border-2 transition-colors bg-white hover:bg-grape-100 border-sand-200 hover:border-grape-300 text-ink-900"
+                >
+                  {k}
+                </button>
+              ))}
+            </div>
           </div>
         )}
 
-        {/* Bahagian C — Artikulasi Karangan has its own data fetching inside
-            ArticulationScreen — it doesn't depend on subjects/papers/questions
-            loading below, so it stays reachable even if that content fails. */}
-        {activeModuleTab === 'pksk' && onOpenArticulation && (
-          <div className="space-y-2">
-            <h3 className="text-sm font-display font-bold text-ink-900">Bahagian C</h3>
+        {activeModuleTab === 'sppim' && (
+          <div className="bg-cream-50 border border-sand-200 rounded-3xl p-6 text-center space-y-3 my-2">
+            <div className="w-12 h-12 rounded-2xl bg-cream-100 flex items-center justify-center mx-auto text-ink-500">
+              <Lock className="w-6 h-6" />
+            </div>
+            <h3 className="text-base font-display font-bold text-ink-900">Modul Ini Dinyahaktifkan Buat Masa Ini</h3>
+            <p className="text-xs text-ink-500 max-w-xs mx-auto">
+              Sila teruskan dengan <strong className="text-ink-700">Modul PKSK</strong>.
+            </p>
             <button
               onClick={() => {
                 soundManager.playClick();
-                onOpenArticulation();
+                setActiveModuleTab('pksk');
               }}
-              className="w-full text-left rounded-3xl bg-mist-100 hover:bg-mist-200/70 border border-mist-200 p-4 sm:p-5 flex items-center justify-between gap-4 transition-colors"
+              className="px-4 py-2 bg-mist-500 hover:bg-mist-600 text-white font-bold rounded-xl text-xs transition-colors"
             >
-              <div className="flex items-center gap-3.5 min-w-0">
-                <div className="w-12 h-12 rounded-2xl bg-cream-50 text-mist-600 shadow-sm flex items-center justify-center shrink-0">
-                  <PenSquare className="w-6 h-6" />
-                </div>
-                <div className="min-w-0">
-                  <h2 className="text-sm sm:text-base font-display font-bold text-ink-900">Artikulasi Karangan</h2>
-                  <p className="text-xs sm:text-sm text-ink-500">Bertulis. Berlatih atau uji diri dalam Exam Mode.</p>
-                </div>
-              </div>
-              <ArrowRight className="w-5 h-5 text-mist-600 shrink-0" />
+              Kembali ke Modul PKSK
             </button>
           </div>
         )}
 
-        {/* Exam PKSK — the real 100-question mixed A+B sitting (doc:
-            PKSK_Structural_Revision.md). Only shown once an "PKSK Exam" set
-            actually exists in the DB — Practice Mode below (per-subject
-            cards) always works regardless. */}
-        {activeModuleTab === 'pksk' && onOpenPkskExam && pkskExamSetReady && (
-          <button
-            onClick={() => {
-              soundManager.playClick();
-              onOpenPkskExam();
-            }}
-            className="w-full text-left rounded-3xl bg-grape-100 hover:bg-grape-200/70 border border-grape-200 p-4 sm:p-5 flex items-center justify-between gap-4 transition-colors"
-          >
-            <div className="flex items-center gap-3.5 min-w-0">
-              <div className="w-12 h-12 rounded-2xl bg-cream-50 text-grape-500 shadow-sm flex items-center justify-center shrink-0">
-                <Target className="w-6 h-6" />
-              </div>
-              <div className="min-w-0">
-                <h2 className="text-sm sm:text-base font-display font-bold text-ink-900">Exam PKSK — Bahagian A & B</h2>
-                <p className="text-xs sm:text-sm text-ink-500">100 soalan bercampur • 90 minit • satu sitting sebenar.</p>
-              </div>
-            </div>
-            <ArrowRight className="w-5 h-5 text-grape-500 shrink-0" />
-          </button>
-        )}
-
-        {isContentLoading ? (
-          <div className="bg-cream-50 border border-sand-200 rounded-3xl p-10 text-center space-y-3">
-            <div className="w-10 h-10 border-4 border-mist-200 border-t-mist-500 rounded-full animate-spin mx-auto" />
-            <p className="text-sm text-ink-500 font-semibold">Memuatkan soalan...</p>
-          </div>
-        ) : contentLoadFailed ? (
-          <div className="bg-clay-100 border border-clay-200 rounded-3xl p-8 text-center space-y-2">
-            <BookOpen className="w-8 h-8 text-clay-500 mx-auto" />
-            <h3 className="text-sm font-display font-bold text-ink-900">Tidak Dapat Muatkan Soalan</h3>
-            <p className="text-xs text-ink-500 max-w-xs mx-auto">
-              Sila semak sambungan internet dan cuba muat semula halaman ini.
-            </p>
-          </div>
-        ) : activeModuleTab === 'sppim' ? (
-          <SubjectGrid subjects={subjects} papers={papers} onSelect={onSelectSubject} />
-        ) : activeModuleTab === 'pksk' ? (
-          <div className="space-y-5">
-            {pkskSubjects && pkskSubjects.length > 0 ? (
-              <>
-                <div className="space-y-2">
-                  <h3 className="text-sm font-display font-bold text-ink-900">Bahagian A</h3>
-                  {pkskSubjects.some((s) => s.bahagian === 'A') ? (
-                    <SubjectGrid
-                      subjects={pkskSubjects.filter((s) => s.bahagian === 'A')}
-                      papers={pkskPapers}
-                      onSelect={onSelectSubject}
-                      layout="list"
-                    />
-                  ) : (
-                    <p className="text-xs text-ink-500 text-center py-2">Bank soalan Bahagian A belum sedia.</p>
-                  )}
-                </div>
-
-                <div className="space-y-2">
-                  <h3 className="text-sm font-display font-bold text-ink-900">Bahagian B</h3>
-                  {!pkskKategoriPelajar ? (
-                    <div className="bg-cream-50 border border-sand-200 rounded-2xl p-4 text-center">
-                      <p className="text-xs text-ink-500">Pilih Kategori Pelajar di atas untuk lihat subjek Bahagian B.</p>
-                    </div>
-                  ) : pkskSubjects.some((s) => s.bahagian === 'B') ? (
-                    <SubjectGrid
-                      subjects={pkskSubjects.filter((s) => s.bahagian === 'B')}
-                      papers={pkskPapers}
-                      onSelect={onSelectSubject}
-                      layout="list"
-                    />
-                  ) : (
-                    <p className="text-xs text-ink-500 text-center py-2">Bank soalan Bahagian B belum sedia.</p>
-                  )}
-                </div>
-              </>
-            ) : (
-              <div className="bg-cream-50 border border-sand-200 rounded-3xl p-6 text-center space-y-3 my-2">
-                <div className="w-12 h-12 rounded-2xl bg-cream-100 flex items-center justify-center mx-auto text-ink-500">
-                  <Lock className="w-6 h-6" />
-                </div>
-                <h3 className="text-base font-display font-bold text-ink-900">Bank Soalan Belum Sedia</h3>
-                <p className="text-xs text-ink-500 max-w-xs mx-auto">
-                  EduQuest sedang menyediakan bank soalan Bahagian A/B untuk modul PKSK. Artikulasi Karangan (Bahagian C) di atas sudah boleh diakses.
-                </p>
-              </div>
-            )}
-          </div>
-        ) : (
+        {activeModuleTab === 'uasa' && (
           <div className="bg-cream-50 border border-sand-200 rounded-3xl p-6 text-center space-y-3 my-2">
             <div className="w-12 h-12 rounded-2xl bg-cream-100 flex items-center justify-center mx-auto text-ink-500">
               <Lock className="w-6 h-6" />
             </div>
             <h3 className="text-base font-display font-bold text-ink-900">Modul Akan Datang</h3>
             <p className="text-xs text-ink-500 max-w-xs mx-auto">
-              EduQuest sedang menyediakan bank soalan untuk modul ini. Buat masa ini, sila teruskan dengan <strong className="text-ink-700">Modul SPPIM</strong>.
+              EduQuest sedang menyediakan bank soalan untuk modul ini. Buat masa ini, sila teruskan dengan <strong className="text-ink-700">Modul PKSK</strong>.
             </p>
             <button
               onClick={() => {
                 soundManager.playClick();
-                setActiveModuleTab('sppim');
+                setActiveModuleTab('pksk');
               }}
               className="px-4 py-2 bg-mist-500 hover:bg-mist-600 text-white font-bold rounded-xl text-xs transition-colors"
             >
-              Kembali ke Modul SPPIM
+              Kembali ke Modul PKSK
             </button>
           </div>
         )}

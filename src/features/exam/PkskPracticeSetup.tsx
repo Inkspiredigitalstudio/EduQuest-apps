@@ -11,9 +11,9 @@ interface PkskPracticeSetupProps {
 }
 
 const ARAS_LABELS: { value: 1 | 2 | 3; label: string }[] = [
-  { value: 1, label: 'Mudah' },
-  { value: 2, label: 'Sederhana' },
-  { value: 3, label: 'Sukar' },
+  { value: 1, label: 'Set A — Mudah' },
+  { value: 2, label: 'Set B — Sederhana' },
+  { value: 3, label: 'Set C — Tinggi' },
 ];
 
 const PANJANG_OPTIONS: { value: 15 | 25 | 50; label: string }[] = [
@@ -69,7 +69,7 @@ export const PkskPracticeSetup: React.FC<PkskPracticeSetupProps> = ({ sectionNam
 
       <div className="text-center space-y-1">
         <h1 className="text-xl font-display font-bold text-ink-900">{sectionName}</h1>
-        <p className="text-sm text-ink-500">{step === 'aras' ? 'Pilih aras kesukaran' : 'Pilih panjang sesi'}</p>
+        <p className="text-sm text-ink-500">{step === 'aras' ? 'Pilih Aras Kesukaran' : 'Pilih Format Latihan'}</p>
       </div>
 
       {step === 'aras' && (

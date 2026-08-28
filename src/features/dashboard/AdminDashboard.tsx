@@ -914,7 +914,7 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
                           <option value="all">Semua Aras</option>
                           <option value="1">Aras 1 (Mudah)</option>
                           <option value="2">Aras 2 (Sederhana)</option>
-                          <option value="3">Aras 3 (Sukar)</option>
+                          <option value="3">Aras 3 (Tinggi)</option>
                         </select>
                       </>
                     )}
