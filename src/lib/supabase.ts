@@ -1176,6 +1176,7 @@ export async function fetchPkskExamDataFromSupabase(): Promise<{
         description: s.description || '',
         status: s.status || 'active',
         color: s.color || 'from-mist-400 to-mist-500',
+        bahagian: s.bahagian || undefined,
       }));
     }
 
@@ -1187,6 +1188,7 @@ export async function fetchPkskExamDataFromSupabase(): Promise<{
         year: p.year,
         title: p.title,
         status: p.status || 'active',
+        tingkatan: p.tingkatan || undefined,
       }));
     }
 
@@ -1608,13 +1610,17 @@ export function getPkskProgressList(userId: string): UserProgress[] {
 // assembled live by this app (doc #6: no dynamic question-selection algorithm
 // for MVP).
 //
-// Tahun 6 and Tingkatan 3 have entirely different question sets, so each
-// tingkatan gets its own paper: title = `${PKSK_EXAM_SET_PAPER_PREFIX} - Set
-// A (${tingkatan})`, e.g. "PKSK Exam - Set A (Tahun 6)". No pksk_papers
-// column stores tingkatan — it's parsed from the title suffix, same
-// convention as the prefix-based detection itself.
+// Tahun 6 and Tingkatan 3 have entirely different question sets, and each
+// tingkatan now offers 3 Aras Kesukaran variants (v2 restructure) — so each
+// combination gets its own paper: title = `${PKSK_EXAM_SET_PAPER_PREFIX} -
+// ${aras} (${tingkatan})`, e.g. "PKSK Exam - Mudah (Tahun 6)". No
+// pksk_papers column stores tingkatan/aras — both are parsed from the title
+// suffix, same convention as the prefix-based detection itself. (Older sets
+// titled "... - Set A (...)" from before this restructure need renaming to
+// one of the 3 Aras labels below to keep working.)
 export const PKSK_EXAM_SET_PAPER_PREFIX = 'PKSK Exam';
 export type PkskExamTingkatan = 'Tahun 6' | 'Tingkatan 3';
+export type PkskExamAras = 'Mudah' | 'Sederhana' | 'Sukar';
 
 export function shuffleArray<T>(arr: T[]): T[] {
   const copy = [...arr];
@@ -1629,10 +1635,14 @@ export function getPkskExamSetQuestions(
   papers: Paper[],
   sections: Section[],
   questions: Question[],
-  tingkatan: PkskExamTingkatan
+  tingkatan: PkskExamTingkatan,
+  aras: PkskExamAras
 ): { paper: Paper; questions: Question[] } | null {
   const paper = papers.find(
-    (p) => p.title.startsWith(PKSK_EXAM_SET_PAPER_PREFIX) && p.title.includes(`(${tingkatan})`)
+    (p) =>
+      p.title.startsWith(PKSK_EXAM_SET_PAPER_PREFIX) &&
+      p.title.includes(`(${tingkatan})`) &&
+      p.title.includes(`- ${aras} `)
   );
   if (!paper) return null;
   const sectionIds = new Set(sections.filter((s) => s.paper_id === paper.id).map((s) => s.id));

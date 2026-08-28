@@ -24,6 +24,7 @@ import {
   getPkskExamSetQuestions,
   savePkskMixedExamAttempt,
   PkskExamTingkatan,
+  PkskExamAras,
   shuffleArray,
   isSupabaseConfigured,
 } from './lib/supabase';
@@ -158,6 +159,32 @@ export default function App() {
   // decided at selection time by checking which dataset the id came from,
   // so Dashboard/SubjectView/ExamScreen keep their existing prop shapes.
   const [activeModule, setActiveModule] = useState<'sppim' | 'pksk'>('sppim');
+
+  // PKSK Practice Mode restructure — Bahagian A (Insaniah/Psikometrik) is
+  // open regardless of tingkatan; Bahagian B (BM/English/Matematik/Sains/...)
+  // content genuinely differs by tingkatan, so its papers are tagged
+  // (Paper.tingkatan) and only shown once the student picks their kategori
+  // here. Lifted to App.tsx (not local Dashboard state) because SubjectView
+  // — a sibling view, not a Dashboard child — needs the same filtered
+  // papers list once a Bahagian B subject is opened.
+  const [pkskKategoriPelajar, setPkskKategoriPelajar] = useState<'Tahun 6' | 'Tingkatan 3' | null>(null);
+  const pkskPapersForKategori = pkskPapers.filter((p) => !p.tingkatan || p.tingkatan === pkskKategoriPelajar);
+
+  // Exam Mode readiness matrix — tingkatan x aras kesukaran (v2 restructure).
+  // Recomputed each render; cheap (6 lookups over already-loaded arrays).
+  const pkskExamReadyByTingkatanAras: Record<PkskExamTingkatan, Record<PkskExamAras, boolean>> = {
+    'Tahun 6': {
+      Mudah: getPkskExamSetQuestions(pkskPapers, pkskSections, pkskQuestions, 'Tahun 6', 'Mudah') !== null,
+      Sederhana: getPkskExamSetQuestions(pkskPapers, pkskSections, pkskQuestions, 'Tahun 6', 'Sederhana') !== null,
+      Sukar: getPkskExamSetQuestions(pkskPapers, pkskSections, pkskQuestions, 'Tahun 6', 'Sukar') !== null,
+    },
+    'Tingkatan 3': {
+      Mudah: getPkskExamSetQuestions(pkskPapers, pkskSections, pkskQuestions, 'Tingkatan 3', 'Mudah') !== null,
+      Sederhana: getPkskExamSetQuestions(pkskPapers, pkskSections, pkskQuestions, 'Tingkatan 3', 'Sederhana') !== null,
+      Sukar: getPkskExamSetQuestions(pkskPapers, pkskSections, pkskQuestions, 'Tingkatan 3', 'Sukar') !== null,
+    },
+  };
+  const pkskExamSetReady = Object.values(pkskExamReadyByTingkatanAras).some((byAras) => Object.values(byAras).some(Boolean));
 
   // Which module the Admin question-bank editor currently has selected —
   // lifted here (rather than living only inside AdminDashboard) so
@@ -411,16 +438,17 @@ export default function App() {
     setView('pksk-exam-level');
   };
 
-  // Pulls the pre-generated "PKSK Exam" set for the chosen tingkatan (doc:
-  // PKSK_Structural_Revision.md #6, no live question-selection algorithm).
-  // The level picker only enables levels that are ready, so reaching here
-  // with no questions shouldn't normally happen — bail safely anyway.
-  const handleStartPkskExam = (level: PkskExamTingkatan) => {
+  // Pulls the pre-generated "PKSK Exam" set for the chosen tingkatan + aras
+  // kesukaran (doc: PKSK_Structural_Revision.md #6, no live question-
+  // selection algorithm). The level picker only enables combinations that
+  // are ready, so reaching here with no questions shouldn't normally
+  // happen — bail safely anyway.
+  const handleStartPkskExam = (level: PkskExamTingkatan, aras: PkskExamAras) => {
     if (!user) {
       setIsAuthOpen(true);
       return;
     }
-    const examSet = getPkskExamSetQuestions(pkskPapers, pkskSections, pkskQuestions, level);
+    const examSet = getPkskExamSetQuestions(pkskPapers, pkskSections, pkskQuestions, level, aras);
     if (!examSet) return;
     setPkskExamQuestions(examSet.questions);
     setActiveModule('pksk');
@@ -648,7 +676,7 @@ export default function App() {
             papers={papers}
             sections={sections}
             pkskSubjects={pkskSubjects}
-            pkskPapers={pkskPapers}
+            pkskPapers={pkskPapersForKategori}
             pkskSections={pkskSections}
             pkskUserProgress={pkskUserProgress}
             userProgress={userProgress}
@@ -657,6 +685,8 @@ export default function App() {
             contentLoadFailed={contentLoadFailed}
             onSelectSubject={handleSelectSubject}
             onSelectSection={handleSelectSection}
+            pkskKategoriPelajar={pkskKategoriPelajar}
+            onSetPkskKategoriPelajar={setPkskKategoriPelajar}
             onOpenAuth={() => setIsAuthOpen(true)}
             onOpenProfile={() => setIsProfileOpen(true)}
             onOpenBattle={() => setIsBattleOpen(true)}
@@ -670,10 +700,7 @@ export default function App() {
               setView('articulation');
             }}
             onOpenPkskExam={handleOpenPkskExamPicker}
-            pkskExamSetReady={
-              getPkskExamSetQuestions(pkskPapers, pkskSections, pkskQuestions, 'Tahun 6') !== null ||
-              getPkskExamSetQuestions(pkskPapers, pkskSections, pkskQuestions, 'Tingkatan 3') !== null
-            }
+            pkskExamSetReady={pkskExamSetReady}
           />
         )}
 
@@ -683,11 +710,8 @@ export default function App() {
 
         {view === 'pksk-exam-level' && (
           <PkskExamLevelPicker
-            readyLevels={{
-              'Tahun 6': getPkskExamSetQuestions(pkskPapers, pkskSections, pkskQuestions, 'Tahun 6') !== null,
-              'Tingkatan 3': getPkskExamSetQuestions(pkskPapers, pkskSections, pkskQuestions, 'Tingkatan 3') !== null,
-            }}
-            onPickLevel={handleStartPkskExam}
+            readyByTingkatanAras={pkskExamReadyByTingkatanAras}
+            onPick={handleStartPkskExam}
             onBack={() => setView('dashboard')}
           />
         )}
@@ -716,7 +740,7 @@ export default function App() {
         {view === 'subject' && activeSubject && (
           <SubjectView
             subject={activeSubject}
-            papers={activeModule === 'pksk' ? pkskPapers : papers}
+            papers={activeModule === 'pksk' ? pkskPapersForKategori : papers}
             sections={activeModule === 'pksk' ? pkskSections : sections}
             userProgress={userProgress}
             onBack={() => setView('dashboard')}
