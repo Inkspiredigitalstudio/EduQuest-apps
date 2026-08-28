@@ -19,11 +19,16 @@ interface SubjectViewProps {
   module?: 'sppim' | 'pksk';
 }
 
-// Strips a leading "Bank " (any case) from section names/titles — PKSK
-// practice sections were named things like "Bank Insaniah 2026" for internal
-// clarity, but that word shouldn't leak into student-facing labels.
+// Strips a leading "Bank " (any case) and a trailing 4-digit year from
+// section/paper names — PKSK content is named things like "Bank Bahasa
+// Melayu 2026" for internal clarity, but neither word should leak into
+// student-facing labels. A title with no "Bank "/year (nothing to strip)
+// passes through unchanged.
 function cleanPkskLabel(text: string): string {
-  return text.replace(/^bank\s+/i, '');
+  return text
+    .replace(/^bank\s+/i, '')
+    .replace(/\s+\d{4}$/, '')
+    .trim();
 }
 
 export const SubjectView: React.FC<SubjectViewProps> = ({ subject, papers, sections, userProgress, onBack, onSelectSection, module = 'sppim' }) => {
@@ -93,7 +98,7 @@ export const SubjectView: React.FC<SubjectViewProps> = ({ subject, papers, secti
                 }`}
               >
                 <FileText className="w-4 h-4" />
-                <span>{paper.title}</span>
+                <span>{isPksk ? cleanPkskLabel(paper.title) : paper.title}</span>
               </button>
             );
           })}
@@ -103,7 +108,7 @@ export const SubjectView: React.FC<SubjectViewProps> = ({ subject, papers, secti
       {/* Sections List */}
       {currentPaper && (
         <div className="bg-cream-50 border border-sand-200 p-5 rounded-3xl">
-          <h3 className="text-lg font-display font-bold text-ink-900">{currentPaper.title}</h3>
+          <h3 className="text-lg font-display font-bold text-ink-900">{isPksk ? cleanPkskLabel(currentPaper.title) : currentPaper.title}</h3>
           <p className="text-xs text-ink-500 mt-1">Pilih bahagian untuk mula menjawab soalan latihan</p>
 
           <div className={isPksk ? 'flex flex-col gap-2.5 max-w-lg mx-auto mt-4' : 'grid grid-cols-1 md:grid-cols-2 gap-4 mt-4'}>
