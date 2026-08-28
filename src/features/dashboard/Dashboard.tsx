@@ -110,14 +110,10 @@ function computeInProgressPapers(
 
 export const Dashboard: React.FC<DashboardProps> = ({
   user,
-  subjects,
-  papers,
-  sections,
   pkskSubjects,
   pkskPapers,
   pkskSections,
   pkskUserProgress,
-  userProgress,
   dailyMissions,
   onSelectSubject,
   onSelectSection,
@@ -137,13 +133,13 @@ export const Dashboard: React.FC<DashboardProps> = ({
     { id: 'uasa', name: 'UASA', active: false },
   ];
 
-  // Merge in-progress papers from both modules — sorted by most recent
-  // activity, each item tagged with which module it belongs to.
+  // SPPIM is disabled — "Sambung Belajar" only ever surfaces PKSK
+  // in-progress papers now, sorted by most recent activity.
   const inProgressPapers = React.useMemo(() => {
-    const sppim = computeInProgressPapers(papers, sections, subjects, userProgress, 'SPPIM');
-    const pksk = computeInProgressPapers(pkskPapers, pkskSections, pkskSubjects || [], pkskUserProgress, 'PKSK');
-    return [...sppim, ...pksk].sort((a, b) => b.maxProgressIndex - a.maxProgressIndex);
-  }, [papers, sections, subjects, userProgress, pkskPapers, pkskSections, pkskSubjects, pkskUserProgress]);
+    return computeInProgressPapers(pkskPapers, pkskSections, pkskSubjects || [], pkskUserProgress, 'PKSK').sort(
+      (a, b) => b.maxProgressIndex - a.maxProgressIndex
+    );
+  }, [pkskPapers, pkskSections, pkskSubjects, pkskUserProgress]);
 
   return (
     <div className="space-y-6 pb-24 max-w-5xl mx-auto">
@@ -368,7 +364,10 @@ export const Dashboard: React.FC<DashboardProps> = ({
         )}
       </div>
 
-      {/* Daily Missions Widget */}
+      {/* Daily Missions Widget — SPPIM-sourced only; SPPIM is disabled, so
+          this stays hidden until it's re-enabled rather than surfacing
+          SPPIM missions on the PKSK-only dashboard. */}
+      {activeModuleTab === 'sppim' && (
       <div className="bg-cream-50 border border-sand-200 rounded-3xl p-5 space-y-3.5">
         <div className="flex items-center justify-between">
           <div className="flex items-center gap-2">
@@ -413,6 +412,7 @@ export const Dashboard: React.FC<DashboardProps> = ({
           ))}
         </div>
       </div>
+      )}
     </div>
   );
 };

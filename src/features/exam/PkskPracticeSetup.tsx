@@ -92,9 +92,9 @@ export const PkskPracticeSetup: React.FC<PkskPracticeSetupProps> = ({ sectionNam
                   {isReady ? <Gauge className="w-5 h-5 text-mist-600" /> : <Lock className="w-5 h-5 text-ink-300" />}
                   <span className="text-base text-ink-900">{label}</span>
                 </span>
-                <span className="text-[11px] text-ink-500 font-bold shrink-0">
-                  {isReady ? `${count} soalan` : 'Belum ada soalan'}
-                </span>
+                {!isReady && (
+                  <span className="text-[11px] text-ink-500 font-bold shrink-0">Belum ada soalan</span>
+                )}
               </button>
             );
           })}

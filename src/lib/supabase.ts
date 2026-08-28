@@ -1459,17 +1459,12 @@ export async function bulkAddPkskQuestionsToSupabase(
 // once that module exists — this function never writes that column itself.
 const PKSK_BAHAGIAN_WEIGHT = { a: 0.2, b: 0.7, c: 0.1 } as const;
 
-// Subject -> Bahagian mapping (confirmed): "Kecerdasan Insaniah" is
-// Bahagian A on its own; "Pengetahuan Am" and "Psikometrik" both count
-// toward Bahagian B ("Kecerdasan Intelek & Pengetahuan Am"). Artikulasi
-// Penulisan (Bahagian C) isn't a pksk_subjects row at all — it's the
-// separate essay module.
-function pkskSubjectToBahagianCol(subjectName: string): 'markah_bahagian_a' | 'markah_bahagian_b' | null {
-  const name = subjectName.trim().toLowerCase();
-  if (name === 'kecerdasan insaniah') return 'markah_bahagian_a';
-  if (name === 'pengetahuan am' || name === 'psikometrik') return 'markah_bahagian_b';
-  return null;
-}
+// Bahagian A/B scoring style is data-driven, not name-matched: a question
+// whose choices carry `nilai_skala` is scored on the confirmed 1-4 weighted
+// scale (Bahagian A — Insaniah + Psikometrik, opinion/situational, no
+// is_correct), everything else falls back to the binary is_correct scheme
+// (Bahagian B). Same convention as savePkskMixedExamAttempt below.
+const PKSK_A_MAX_WEIGHT = 4;
 
 export async function savePkskAttempt(params: {
   user_id: string;
@@ -1483,7 +1478,8 @@ export async function savePkskAttempt(params: {
   try {
     const { user_id, tingkatan, subject, section, questions, answersMap } = params;
 
-    const bahagianCol = pkskSubjectToBahagianCol(subject.name);
+    const bahagianCol =
+      subject.bahagian === 'A' ? 'markah_bahagian_a' : subject.bahagian === 'B' ? 'markah_bahagian_b' : null;
     if (!bahagianCol) {
       console.warn(`PKSK subject "${subject.name}" doesn't map to a known Bahagian (A/B) — skipping pksk_results write.`);
       return null;
@@ -1518,8 +1514,22 @@ export async function savePkskAttempt(params: {
       if (aqErr) throw aqErr;
     }
 
-    const correctCount = answerRows.filter((r) => r.is_correct).length;
-    const percent = questions.length > 0 ? Math.round((correctCount / questions.length) * 100) : 0;
+    // Weighted-scale (nilai_skala) scoring for Bahagian A (Insaniah/
+    // Psikometrik — no is_correct, opinion/situational choices), binary
+    // is_correct for Bahagian B. Same data-driven signal as
+    // savePkskMixedExamAttempt above.
+    let scoreSum = 0;
+    for (const q of questions) {
+      const choiceId = answersMap[q.id];
+      const choice = q.choices.find((c) => c.id === choiceId);
+      const isWeighted = q.choices.some((c) => c.nilai_skala != null);
+      if (isWeighted) {
+        scoreSum += (choice?.nilai_skala ?? 0) / PKSK_A_MAX_WEIGHT;
+      } else if (choice?.is_correct) {
+        scoreSum += 1;
+      }
+    }
+    const percent = questions.length > 0 ? Math.round((scoreSum / questions.length) * 100) : 0;
 
     // jumlah_markah (weighted A+B+C) can only be computed once all three
     // Bahagian have a score — Bahagian C comes from the separate Artikulasi
@@ -1661,14 +1671,6 @@ export function getPkskExamSetQuestions(
 
   return { paper, questions: orderedQuestions };
 }
-
-// Bahagian A/B scoring style is data-driven, not name-matched: a question
-// whose choices carry `nilai_skala` is scored on the confirmed 1-4 weighted
-// scale (Bahagian A — Insaniah + Psikometrik, no zero score), everything else
-// falls back to the existing binary is_correct scheme (Bahagian B — temporary
-// per doc #8 until Ieda reconfirms). This avoids re-deriving category from
-// subject/section name inside a single mixed attempt.
-const PKSK_A_MAX_WEIGHT = 4;
 
 export async function savePkskMixedExamAttempt(params: {
   user_id: string;

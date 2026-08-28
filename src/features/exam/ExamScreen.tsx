@@ -1,7 +1,7 @@
-import React, { useState, useMemo } from 'react';
+import React, { useState, useMemo, useEffect, useRef } from 'react';
 import { Section, Question, Choice, UserProfile } from '../../types';
 import { soundManager } from '../../lib/audio';
-import { ArrowLeft, CheckCircle2, XCircle, Flame, Coins, Sparkles, ArrowRight, BookOpen, Trophy } from 'lucide-react';
+import { ArrowLeft, CheckCircle2, XCircle, Flame, Coins, Sparkles, ArrowRight, BookOpen, Trophy, Timer } from 'lucide-react';
 
 interface ExamScreenProps {
   // Optional because PKSK Exam Mode spans many sections at once — there is
@@ -29,6 +29,10 @@ interface ExamScreenProps {
   // disimpan... walaupun pelajar stop di tengah"). Falls back to onCancel
   // (discard, no save) when unset — SPPIM and PKSK Exam Mode are unaffected.
   onExitEarly?: (answersMap: Record<string, string>) => void;
+  // When set, shows a live mm:ss countdown and auto-submits (same path as
+  // "Selesaikan") once it reaches 0. Unset (default) keeps today's untimed
+  // behaviour — SPPIM is unaffected.
+  durationSeconds?: number;
 }
 
 function shuffleQuestionsChoices(questions: Question[]): Question[] {
@@ -91,6 +95,7 @@ export const ExamScreen: React.FC<ExamScreenProps> = ({
   mode = 'practice',
   module = 'sppim',
   onExitEarly,
+  durationSeconds,
 }) => {
   const questions = useMemo(() => shuffleQuestionsChoices(rawQuestions), [rawQuestions]);
 
@@ -106,9 +111,56 @@ export const ExamScreen: React.FC<ExamScreenProps> = ({
   const [coinsEarned, setCoinsEarned] = useState(0);
   const [streak, setStreak] = useState(0);
   const [answersMap, setAnswersMap] = useState<Record<string, string>>({});
+  const [secondsLeft, setSecondsLeft] = useState(durationSeconds ?? 0);
 
   const currentQuestion = questions[currentIndex];
   const progressPercent = Math.round(((currentIndex + 1) / questions.length) * 100);
+
+  // Refs so the interval closure always sees the latest values without
+  // needing to be recreated every render.
+  const stateRef = useRef({ score, coinsEarned, answersMap, questions });
+  stateRef.current = { score, coinsEarned, answersMap, questions };
+
+  const finishExam = () => {
+    setIsSubmitting(true);
+    soundManager.playLevelUp();
+    const { score: finalScore, coinsEarned: streakCoins, answersMap: finalAnswers, questions: qs } = stateRef.current;
+
+    setTimeout(() => {
+      setLoadingPercent(65);
+      setLoadingText('Menjana ganjaran koin & mata XP...');
+    }, 200);
+
+    setTimeout(() => {
+      setLoadingPercent(100);
+      setLoadingText('Sedia! Memaparkan keputusan...');
+
+      const isFullMarks = finalScore === qs.length;
+      const sectionBonusCoins = 150 + (isFullMarks ? 100 : 0);
+      const totalCoinsGained = streakCoins + sectionBonusCoins;
+      const totalXpGained = finalScore * 20 + 50;
+
+      onCompleteExam(finalScore, qs.length, totalCoinsGained, totalXpGained, finalAnswers);
+    }, 450);
+  };
+
+  useEffect(() => {
+    if (!durationSeconds || isSubmitting) return;
+    if (secondsLeft <= 0) {
+      finishExam();
+      return;
+    }
+    const timeout = setTimeout(() => setSecondsLeft((s) => s - 1), 1000);
+    return () => clearTimeout(timeout);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [secondsLeft, durationSeconds, isSubmitting]);
+
+  const formattedTime = (() => {
+    const m = Math.floor(secondsLeft / 60);
+    const s = secondsLeft % 60;
+    return `${m}:${s.toString().padStart(2, '0')}`;
+  })();
+  const timeRunningLow = durationSeconds != null && secondsLeft <= 60;
 
   if (isSubmitting) {
     return (
@@ -187,25 +239,7 @@ export const ExamScreen: React.FC<ExamScreenProps> = ({
       setSelectedChoiceId(null);
       setIsAnswered(false);
     } else {
-      setIsSubmitting(true);
-      soundManager.playLevelUp();
-
-      setTimeout(() => {
-        setLoadingPercent(65);
-        setLoadingText('Menjana ganjaran koin & mata XP...');
-      }, 200);
-
-      setTimeout(() => {
-        setLoadingPercent(100);
-        setLoadingText('Sedia! Memaparkan keputusan...');
-
-        const isFullMarks = score === questions.length;
-        const sectionBonusCoins = 150 + (isFullMarks ? 100 : 0);
-        const totalCoinsGained = coinsEarned + sectionBonusCoins;
-        const totalXpGained = score * 20 + 50;
-
-        onCompleteExam(score, questions.length, totalCoinsGained, totalXpGained, answersMap);
-      }, 450);
+      finishExam();
     }
   };
 
@@ -248,6 +282,16 @@ export const ExamScreen: React.FC<ExamScreenProps> = ({
         </div>
 
         <div className="flex items-center gap-2">
+          {durationSeconds != null && (
+            <div
+              className={`flex items-center gap-1 px-3 py-1.5 rounded-2xl font-bold text-xs ${
+                timeRunningLow ? 'bg-clay-100 text-clay-500' : 'bg-mist-100 text-mist-600'
+              }`}
+            >
+              <Timer className="w-4 h-4" />
+              <span>{formattedTime}</span>
+            </div>
+          )}
           <div className="flex items-center gap-1 bg-clay-100 px-3 py-1.5 rounded-2xl text-clay-500 font-bold text-xs">
             <Flame className="w-4 h-4" />
             <span>{streak}</span>

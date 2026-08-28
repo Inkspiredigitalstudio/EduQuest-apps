@@ -154,6 +154,10 @@ export default function App() {
   // Panjang Sesi (Warm Up/Sprint/Marathon) -limited question set, separate
   // from both the full-section browsing above and the mixed Exam Mode below.
   const [pkskPracticeQuestions, setPkskPracticeQuestions] = useState<Question[]>([]);
+  // Timer toggle from PkskPracticeSetup — 1 minute per question in the
+  // chosen Panjang Sesi block (Warm Up 15 -> 15min, Sprint 25 -> 25min,
+  // Marathon 50 -> 50min). null when the student left Timer off.
+  const [pkskPracticeDurationSeconds, setPkskPracticeDurationSeconds] = useState<number | null>(null);
   const [pkskPracticeResult, setPkskPracticeResult] = useState<{
     percent: number;
     totalAnswered: number;
@@ -503,12 +507,12 @@ export default function App() {
   // Aras Kesukaran + Panjang Sesi picked (PkskPracticeSetup) — pull matching
   // questions from this section, shuffle, cap to the block size. A thin bank
   // just yields a shorter-than-nominal session rather than blocking outright.
-  // _timerOn: accepted from the setup screen's toggle but not yet enforced —
-  // ExamScreen has no countdown UI/auto-submit infra at all today (same gap
-  // flagged for Exam Mode's 90-minute timer). Follow-up, not scope creep here.
-  const handleStartPkskPractice = (aras: 1 | 2 | 3, panjang: 15 | 25 | 50, _timerOn: boolean) => {
+  // timerOn maps to 1 minute per question in the chosen block (doc gap
+  // flagged for a while — no other pacing convention was ever confirmed).
+  const handleStartPkskPractice = (aras: 1 | 2 | 3, panjang: 15 | 25 | 50, timerOn: boolean) => {
     const atAras = pkskPracticeQuestionPool.filter((q) => q.aras_kesukaran === aras);
     setPkskPracticeQuestions(shuffleArray(atAras).slice(0, panjang));
+    setPkskPracticeDurationSeconds(timerOn ? panjang * 60 : null);
     setView('exam');
   };
 
@@ -840,6 +844,7 @@ export default function App() {
             onCompleteExam={handleCompletePkskMixedExam}
             onCancel={() => setView('dashboard')}
             explanationLabel="Penerangan:"
+            durationSeconds={90 * 60}
           />
         )}
 
@@ -874,6 +879,7 @@ export default function App() {
             onExitEarly={activeModule === 'pksk' ? handleExitPkskPracticeEarly : undefined}
             explanationLabel={activeModule === 'pksk' ? 'Penerangan:' : undefined}
             module={activeModule}
+            durationSeconds={activeModule === 'pksk' && pkskPracticeDurationSeconds ? pkskPracticeDurationSeconds : undefined}
           />
         )}
 
