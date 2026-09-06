@@ -440,8 +440,10 @@ export default function App() {
     setView('result');
   };
 
-  const pkskTingkatanLabel = (u: UserProfile) =>
-    u.school_form ? `Tingkatan ${u.school_form}` : u.school_year ? `Tahun ${u.school_year}` : 'Tidak dinyatakan';
+  // exam_attempts.tingkatan is an integer column (plain Tingkatan/Tahun
+  // number) — a "Tahun 6"/"Tingkatan 3" label string silently failed every
+  // insert (Postgres type mismatch), which is why no PKSK attempt ever saved.
+  const pkskTingkatanInt = (u: UserProfile) => u.school_form || u.school_year || 0;
 
   // PKSK Practice completion — writes to exam_attempts/exam_attempt_questions/
   // pksk_results (via savePkskAttempt), NOT saveAttempt/updateUserStats. PKSK
@@ -461,7 +463,7 @@ export default function App() {
 
     const result = await savePkskAttempt({
       user_id: user.id,
-      tingkatan: pkskTingkatanLabel(user),
+      tingkatan: pkskTingkatanInt(user),
       subject: activeSubject,
       section: activeSection,
       questions: pkskPracticeQuestions,
@@ -488,7 +490,7 @@ export default function App() {
 
     const result = await savePkskAttempt({
       user_id: user.id,
-      tingkatan: pkskTingkatanLabel(user),
+      tingkatan: pkskTingkatanInt(user),
       subject: activeSubject,
       section: activeSection,
       questions: pkskPracticeQuestions,
@@ -554,15 +556,9 @@ export default function App() {
   ) => {
     if (!user) return;
 
-    const tingkatan = user.school_form
-      ? `Tingkatan ${user.school_form}`
-      : user.school_year
-      ? `Tahun ${user.school_year}`
-      : 'Tidak dinyatakan';
-
     const result = await savePkskMixedExamAttempt({
       user_id: user.id,
-      tingkatan,
+      tingkatan: pkskTingkatanInt(user),
       questions: pkskExamQuestions,
       answersMap,
     });

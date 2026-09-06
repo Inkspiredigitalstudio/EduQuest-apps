@@ -1468,7 +1468,11 @@ const PKSK_A_MAX_WEIGHT = 4;
 
 export async function savePkskAttempt(params: {
   user_id: string;
-  tingkatan: string; // exam_attempts.tingkatan is NOT NULL — pass the student's Tahun 6 / Tingkatan 3 selection
+  // exam_attempts.tingkatan is an integer column (NOT NULL) — the plain
+  // Tingkatan/Tahun number (e.g. 3 or 6), not a "Tahun 6"/"Tingkatan 3"
+  // label string. A string here silently failed every insert (Postgres
+  // rejects the type mismatch), which is why no PKSK attempt ever saved.
+  tingkatan: number;
   subject: Subject;
   section: Section;
   questions: Question[];
@@ -1674,7 +1678,8 @@ export function getPkskExamSetQuestions(
 
 export async function savePkskMixedExamAttempt(params: {
   user_id: string;
-  tingkatan: string;
+  // exam_attempts.tingkatan is an integer column — see savePkskAttempt above.
+  tingkatan: number;
   questions: Question[];
   answersMap: Record<string, string>;
 }): Promise<{ attempt_id: string; markahA: number | null; markahB: number | null } | null> {
