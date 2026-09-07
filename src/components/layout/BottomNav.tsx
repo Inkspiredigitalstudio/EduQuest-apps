@@ -1,7 +1,7 @@
 import React from 'react';
 import { UserProfile } from '../../types';
 import { soundManager } from '../../lib/audio';
-import { BookOpen, Swords, Award, Users, User } from 'lucide-react';
+import { BookOpen, Award, Users, User } from 'lucide-react';
 
 interface BottomNavProps {
   activeTab: 'home' | 'battle' | 'achievements' | 'leaderboard' | 'profile';
@@ -18,9 +18,9 @@ interface NavItem {
 }
 
 export const BottomNav: React.FC<BottomNavProps> = ({ activeTab, user, onSelectTab }) => {
+  // Battle 1v1 is hidden for now — PKSK is the only module in view.
   const navItems: NavItem[] = [
     { id: 'home', label: 'Utama', icon: BookOpen, activeColor: 'text-mist-600', activeBg: 'bg-mist-100' },
-    { id: 'battle', label: 'Battle', icon: Swords, activeColor: 'text-clay-500', activeBg: 'bg-clay-100' },
     { id: 'achievements', label: 'Lencana', icon: Award, activeColor: 'text-honey-500', activeBg: 'bg-honey-100' },
     { id: 'leaderboard', label: 'Ranking', icon: Users, activeColor: 'text-sage-600', activeBg: 'bg-sage-100' },
     { id: 'profile', label: 'Profil', icon: User, activeColor: 'text-mist-600', activeBg: 'bg-mist-100' },

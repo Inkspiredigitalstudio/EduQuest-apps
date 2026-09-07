@@ -1,7 +1,7 @@
-import React, { useState, useMemo } from 'react';
+import React, { useState, useMemo, useEffect, useRef } from 'react';
 import { Section, Question, Choice, UserProfile } from '../../types';
 import { soundManager } from '../../lib/audio';
-import { ArrowLeft, CheckCircle2, XCircle, Flame, Coins, Sparkles, ArrowRight, BookOpen, Trophy } from 'lucide-react';
+import { ArrowLeft, CheckCircle2, XCircle, Flame, Coins, Sparkles, ArrowRight, BookOpen, Trophy, Timer } from 'lucide-react';
 
 interface ExamScreenProps {
   // Optional because PKSK Exam Mode spans many sections at once — there is
@@ -17,6 +17,22 @@ interface ExamScreenProps {
   // students can't infer Bahagian A vs B from the label. 'practice' (default)
   // keeps today's behaviour: student already picked this section themselves.
   mode?: 'practice' | 'exam';
+  // PKSK section names are subject categories ("Kecerdasan Insaniah",
+  // "Matematik"), not exam-paper letters like SPPIM's — so the practice
+  // label drops the "Bahagian" prefix and any leftover "Bank " naming for
+  // PKSK, instead of showing "Bahagian Bank Insaniah 2026" (see PKSK v2
+  // restructure doc #2). SPPIM is unaffected by leaving this unset.
+  module?: 'sppim' | 'pksk';
+  // When set, exiting mid-session calls this with whatever was answered so
+  // far instead of onCancel — lets the caller save a partial attempt
+  // (PKSK Practice Mode: doc #4, "progress yang dah dibuat sentiasa
+  // disimpan... walaupun pelajar stop di tengah"). Falls back to onCancel
+  // (discard, no save) when unset — SPPIM and PKSK Exam Mode are unaffected.
+  onExitEarly?: (answersMap: Record<string, string>) => void;
+  // When set, shows a live mm:ss countdown and auto-submits (same path as
+  // "Selesaikan") once it reaches 0. Unset (default) keeps today's untimed
+  // behaviour — SPPIM is unaffected.
+  durationSeconds?: number;
 }
 
 function shuffleQuestionsChoices(questions: Question[]): Question[] {
@@ -77,6 +93,9 @@ export const ExamScreen: React.FC<ExamScreenProps> = ({
   onCancel,
   explanationLabel = 'Penerangan Hukum & Dalil:',
   mode = 'practice',
+  module = 'sppim',
+  onExitEarly,
+  durationSeconds,
 }) => {
   const questions = useMemo(() => shuffleQuestionsChoices(rawQuestions), [rawQuestions]);
 
@@ -92,9 +111,56 @@ export const ExamScreen: React.FC<ExamScreenProps> = ({
   const [coinsEarned, setCoinsEarned] = useState(0);
   const [streak, setStreak] = useState(0);
   const [answersMap, setAnswersMap] = useState<Record<string, string>>({});
+  const [secondsLeft, setSecondsLeft] = useState(durationSeconds ?? 0);
 
   const currentQuestion = questions[currentIndex];
   const progressPercent = Math.round(((currentIndex + 1) / questions.length) * 100);
+
+  // Refs so the interval closure always sees the latest values without
+  // needing to be recreated every render.
+  const stateRef = useRef({ score, coinsEarned, answersMap, questions });
+  stateRef.current = { score, coinsEarned, answersMap, questions };
+
+  const finishExam = () => {
+    setIsSubmitting(true);
+    soundManager.playLevelUp();
+    const { score: finalScore, coinsEarned: streakCoins, answersMap: finalAnswers, questions: qs } = stateRef.current;
+
+    setTimeout(() => {
+      setLoadingPercent(65);
+      setLoadingText('Menjana ganjaran koin & mata XP...');
+    }, 200);
+
+    setTimeout(() => {
+      setLoadingPercent(100);
+      setLoadingText('Sedia! Memaparkan keputusan...');
+
+      const isFullMarks = finalScore === qs.length;
+      const sectionBonusCoins = 150 + (isFullMarks ? 100 : 0);
+      const totalCoinsGained = streakCoins + sectionBonusCoins;
+      const totalXpGained = finalScore * 20 + 50;
+
+      onCompleteExam(finalScore, qs.length, totalCoinsGained, totalXpGained, finalAnswers);
+    }, 450);
+  };
+
+  useEffect(() => {
+    if (!durationSeconds || isSubmitting) return;
+    if (secondsLeft <= 0) {
+      finishExam();
+      return;
+    }
+    const timeout = setTimeout(() => setSecondsLeft((s) => s - 1), 1000);
+    return () => clearTimeout(timeout);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [secondsLeft, durationSeconds, isSubmitting]);
+
+  const formattedTime = (() => {
+    const m = Math.floor(secondsLeft / 60);
+    const s = secondsLeft % 60;
+    return `${m}:${s.toString().padStart(2, '0')}`;
+  })();
+  const timeRunningLow = durationSeconds != null && secondsLeft <= 60;
 
   if (isSubmitting) {
     return (
@@ -173,25 +239,7 @@ export const ExamScreen: React.FC<ExamScreenProps> = ({
       setSelectedChoiceId(null);
       setIsAnswered(false);
     } else {
-      setIsSubmitting(true);
-      soundManager.playLevelUp();
-
-      setTimeout(() => {
-        setLoadingPercent(65);
-        setLoadingText('Menjana ganjaran koin & mata XP...');
-      }, 200);
-
-      setTimeout(() => {
-        setLoadingPercent(100);
-        setLoadingText('Sedia! Memaparkan keputusan...');
-
-        const isFullMarks = score === questions.length;
-        const sectionBonusCoins = 150 + (isFullMarks ? 100 : 0);
-        const totalCoinsGained = coinsEarned + sectionBonusCoins;
-        const totalXpGained = score * 20 + 50;
-
-        onCompleteExam(score, questions.length, totalCoinsGained, totalXpGained, answersMap);
-      }, 450);
+      finishExam();
     }
   };
 
@@ -204,7 +252,14 @@ export const ExamScreen: React.FC<ExamScreenProps> = ({
         <button
           onClick={() => {
             soundManager.playClick();
-            if (confirm('Adakah anda pasti mahu keluar? Kemajuan latihan ini akan dibatalkan.')) {
+            const hasAnswers = Object.keys(answersMap).length > 0;
+            const confirmMsg = onExitEarly && hasAnswers
+              ? 'Adakah anda pasti mahu keluar? Jawapan yang dah dibuat akan disimpan.'
+              : 'Adakah anda pasti mahu keluar? Kemajuan latihan ini akan dibatalkan.';
+            if (!confirm(confirmMsg)) return;
+            if (onExitEarly && hasAnswers) {
+              onExitEarly(answersMap);
+            } else {
               onCancel();
             }
           }}
@@ -215,15 +270,28 @@ export const ExamScreen: React.FC<ExamScreenProps> = ({
         </button>
 
         <div className="flex-1 max-w-xs text-center space-y-1">
-          <div className="text-xs font-bold text-mist-600">
+          <div className={`text-xs font-bold ${mode === 'exam' ? 'text-grape-600' : 'text-mist-600'}`}>
             Soalan {currentIndex + 1} daripada {questions.length}
           </div>
           <div className="w-full bg-cream-200 h-2.5 rounded-full overflow-hidden">
-            <div className="bg-mist-500 h-full rounded-full transition-all duration-300" style={{ width: `${progressPercent}%` }} />
+            <div
+              className={`h-full rounded-full transition-all duration-300 ${mode === 'exam' ? 'bg-grape-500' : 'bg-mist-500'}`}
+              style={{ width: `${progressPercent}%` }}
+            />
           </div>
         </div>
 
         <div className="flex items-center gap-2">
+          {durationSeconds != null && (
+            <div
+              className={`flex items-center gap-1 px-3 py-1.5 rounded-2xl font-bold text-xs ${
+                timeRunningLow ? 'bg-clay-100 text-clay-500' : 'bg-mist-100 text-mist-600'
+              }`}
+            >
+              <Timer className="w-4 h-4" />
+              <span>{formattedTime}</span>
+            </div>
+          )}
           <div className="flex items-center gap-1 bg-clay-100 px-3 py-1.5 rounded-2xl text-clay-500 font-bold text-xs">
             <Flame className="w-4 h-4" />
             <span>{streak}</span>
@@ -239,9 +307,11 @@ export const ExamScreen: React.FC<ExamScreenProps> = ({
       <div className="bg-cream-50 border border-sand-200 rounded-3xl p-6 sm:p-8 space-y-6">
         <div className="space-y-3">
           <div className="flex items-center justify-between text-xs font-bold text-ink-500">
-            <span className="uppercase tracking-wide text-mist-600 bg-mist-100 px-2.5 py-1 rounded-lg">
+            <span className={`uppercase tracking-wide px-2.5 py-1 rounded-lg ${mode === 'exam' ? 'text-grape-600 bg-grape-100' : 'text-mist-600 bg-mist-100'}`}>
               {mode === 'exam' || !section
                 ? `Soalan ${currentIndex + 1} / ${questions.length}`
+                : module === 'pksk'
+                ? `${section.name.replace(/^bank\s+/i, '')} • Soalan ${currentQuestion.order}`
                 : `Bahagian ${section.name} • Soalan ${currentQuestion.order}`}
             </span>
             <span>{isWeightedQuestion ? 'Pilih jawapan yang PALING menggambarkan diri anda' : 'Pilih SATU jawapan yang betul'}</span>
