@@ -337,7 +337,7 @@ export const Dashboard: React.FC<DashboardProps> = ({
               }}
               className="px-4 py-2 bg-mist-500 hover:bg-mist-600 text-white font-bold rounded-xl text-xs transition-colors"
             >
-              Kembali ke Modul PKSK
+              Kembali ke Menu Utama
             </button>
           </div>
         )}
@@ -358,7 +358,7 @@ export const Dashboard: React.FC<DashboardProps> = ({
               }}
               className="px-4 py-2 bg-mist-500 hover:bg-mist-600 text-white font-bold rounded-xl text-xs transition-colors"
             >
-              Kembali ke Modul PKSK
+              Kembali ke Menu Utama
             </button>
           </div>
         )}

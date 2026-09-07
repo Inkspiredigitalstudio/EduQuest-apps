@@ -1495,6 +1495,7 @@ export async function savePkskAttempt(params: {
         user_id,
         module: 'PKSK',
         tingkatan,
+        status: 'completed',
         started_at: new Date().toISOString(),
         completed_at: new Date().toISOString(),
       })
@@ -1509,7 +1510,7 @@ export async function savePkskAttempt(params: {
       return {
         attempt_id: attemptId,
         question_id: q.id,
-        choice_id: choiceId || null,
+        selected_choice_id: choiceId || null,
         is_correct: choice ? Boolean(choice.is_correct) : false,
       };
     });
@@ -1694,6 +1695,7 @@ export async function savePkskMixedExamAttempt(params: {
         module: 'PKSK',
         mode: 'exam',
         tingkatan,
+        status: 'completed',
         started_at: new Date().toISOString(),
         completed_at: new Date().toISOString(),
       })
@@ -1723,7 +1725,7 @@ export async function savePkskMixedExamAttempt(params: {
       return {
         attempt_id: attemptId,
         question_id: q.id,
-        choice_id: choiceId || null,
+        selected_choice_id: choiceId || null,
         is_correct: choice ? Boolean(choice.is_correct) : false,
       };
     });

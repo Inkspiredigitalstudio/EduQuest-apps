@@ -6,8 +6,14 @@ import { ArrowLeft, Gauge, Lock, Timer, Play } from 'lucide-react';
 interface PkskPracticeSetupProps {
   sectionName: string;
   questions: Question[];
-  onStart: (aras: 1 | 2 | 3, panjang: 15 | 25 | 50, timerOn: boolean) => void;
+  onStart: (aras: 1 | 2 | 3 | null, panjang: 15 | 25 | 50, timerOn: boolean) => void;
   onBack: () => void;
+  // Bahagian A (Insaniah/Psikometrik) has no real Aras Kesukaran tiers — the
+  // question bank isn't tagged into a clean 15/25/50-per-aras split (most
+  // rows sit at a single aras value), so filtering by aras there just starved
+  // Warm-Up/Sprint/Marathon of questions. When false, this screen skips
+  // straight to Pilih Format Latihan against the whole pool (aras: null).
+  arasRequired?: boolean;
 }
 
 const ARAS_LABELS: { value: 1 | 2 | 3; label: string }[] = [
@@ -27,14 +33,20 @@ const PANJANG_OPTIONS: { value: 15 | 25 | 50; label: string }[] = [
 // -> toggle Timer -> Mula. Session length is capped to however many
 // questions actually exist at the chosen aras — a thin bank still starts a
 // (shorter) session rather than blocking the student outright.
-export const PkskPracticeSetup: React.FC<PkskPracticeSetupProps> = ({ sectionName, questions, onStart, onBack }) => {
-  const [step, setStep] = useState<'aras' | 'panjang'>('aras');
+export const PkskPracticeSetup: React.FC<PkskPracticeSetupProps> = ({
+  sectionName,
+  questions,
+  onStart,
+  onBack,
+  arasRequired = true,
+}) => {
+  const [step, setStep] = useState<'aras' | 'panjang'>(arasRequired ? 'aras' : 'panjang');
   const [aras, setAras] = useState<1 | 2 | 3 | null>(null);
   const [panjang, setPanjang] = useState<15 | 25 | 50 | null>(null);
   const [timerOn, setTimerOn] = useState(true);
 
   const countForAras = (a: 1 | 2 | 3) => questions.filter((q) => q.aras_kesukaran === a).length;
-  const availableAtChosenAras = aras !== null ? countForAras(aras) : 0;
+  const availableAtChosenAras = arasRequired ? (aras !== null ? countForAras(aras) : 0) : questions.length;
 
   const handlePickAras = (a: 1 | 2 | 3) => {
     if (countForAras(a) === 0) return;
@@ -45,9 +57,9 @@ export const PkskPracticeSetup: React.FC<PkskPracticeSetupProps> = ({ sectionNam
   };
 
   const handleMula = () => {
-    if (aras === null || panjang === null) return;
+    if ((arasRequired && aras === null) || panjang === null) return;
     soundManager.playClick();
-    onStart(aras, panjang, timerOn);
+    onStart(arasRequired ? aras : null, panjang, timerOn);
   };
 
   return (
@@ -55,7 +67,7 @@ export const PkskPracticeSetup: React.FC<PkskPracticeSetupProps> = ({ sectionNam
       <button
         onClick={() => {
           soundManager.playClick();
-          if (step === 'panjang') {
+          if (arasRequired && step === 'panjang') {
             setStep('aras');
             return;
           }

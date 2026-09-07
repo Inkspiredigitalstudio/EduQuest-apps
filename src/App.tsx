@@ -509,11 +509,14 @@ export default function App() {
   // Aras Kesukaran + Panjang Sesi picked (PkskPracticeSetup) — pull matching
   // questions from this section, shuffle, cap to the block size. A thin bank
   // just yields a shorter-than-nominal session rather than blocking outright.
-  // timerOn maps to 1 minute per question in the chosen block (doc gap
-  // flagged for a while — no other pacing convention was ever confirmed).
-  const handleStartPkskPractice = (aras: 1 | 2 | 3, panjang: 15 | 25 | 50, timerOn: boolean) => {
-    const atAras = pkskPracticeQuestionPool.filter((q) => q.aras_kesukaran === aras);
-    setPkskPracticeQuestions(shuffleArray(atAras).slice(0, panjang));
+  // aras is null for Bahagian A (PkskPracticeSetup's arasRequired={false} —
+  // its question bank isn't tagged into a clean per-aras split), meaning the
+  // whole pool is used unfiltered. timerOn maps to 1 minute per question in
+  // the chosen block (doc gap flagged for a while — no other pacing
+  // convention was ever confirmed).
+  const handleStartPkskPractice = (aras: 1 | 2 | 3 | null, panjang: 15 | 25 | 50, timerOn: boolean) => {
+    const pool = aras === null ? pkskPracticeQuestionPool : pkskPracticeQuestionPool.filter((q) => q.aras_kesukaran === aras);
+    setPkskPracticeQuestions(shuffleArray(pool).slice(0, panjang));
     setPkskPracticeDurationSeconds(timerOn ? panjang * 60 : null);
     setView('exam');
   };
@@ -790,8 +793,8 @@ export default function App() {
           />
         )}
 
-        {view === 'articulation' && user && (
-          <ArticulationScreen user={user} onExit={() => setView('dashboard')} />
+        {view === 'articulation' && user && pkskKategoriPelajar && (
+          <ArticulationScreen user={user} kategoriPelajar={pkskKategoriPelajar} onExit={() => setView('dashboard')} />
         )}
 
         {view === 'pksk-mod' && pkskKategoriPelajar && (
@@ -885,6 +888,7 @@ export default function App() {
             questions={pkskPracticeQuestionPool}
             onStart={handleStartPkskPractice}
             onBack={() => setView(activeSubject?.bahagian === 'A' ? 'pksk-bahagian' : 'pksk-mata-pelajaran')}
+            arasRequired={activeSubject?.bahagian !== 'A'}
           />
         )}
 

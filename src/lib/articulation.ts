@@ -67,7 +67,12 @@ export async function fetchArticulationQuestions(level?: ArticulationLevel): Pro
 // server-stored timestamps rather than resetting the clock.
 export async function startEssayAnswer(params: {
   userId: string;
-  tingkatan: string;
+  // exam_attempts.tingkatan is an integer column (plain Tingkatan/Tahun
+  // number) — see the matching fix in lib/supabase.ts's savePkskAttempt. A
+  // label string here silently failed every insert, which meant
+  // essayAnswer stayed null and the Exam Mode countdown never had an
+  // exam_end_time to show.
+  tingkatan: number;
   mode: ArticulationMode;
   question: ArticulationQuestion;
 }): Promise<EssayAnswer | null> {

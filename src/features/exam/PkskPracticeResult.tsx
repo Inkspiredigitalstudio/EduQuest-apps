@@ -87,7 +87,7 @@ export const PkskPracticeResult: React.FC<PkskPracticeResultProps> = ({
           className="w-full py-4 px-6 bg-cream-100 hover:bg-cream-200 text-ink-700 border border-sand-200 font-bold text-base rounded-2xl transition-colors flex items-center justify-center gap-2"
         >
           <Home className="w-5 h-5" />
-          <span>Kembali ke Dashboard</span>
+          <span>Kembali ke Menu Utama</span>
         </button>
       </div>
     </div>

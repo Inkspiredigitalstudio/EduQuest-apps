@@ -86,7 +86,7 @@ export const PkskExamResult: React.FC<PkskExamResultProps> = ({ markahA, markahB
         className="w-full py-4 px-6 bg-mist-500 hover:bg-mist-600 text-white font-bold text-base rounded-2xl transition-colors flex items-center justify-center gap-2"
       >
         <Home className="w-5 h-5" />
-        <span>Kembali ke Dashboard</span>
+        <span>Kembali ke Menu Utama</span>
       </button>
     </div>
   );

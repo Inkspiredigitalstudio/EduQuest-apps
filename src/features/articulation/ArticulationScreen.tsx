@@ -14,12 +14,15 @@ import { soundManager } from '../../lib/audio';
 import { WritingEditor } from './WritingEditor';
 import { AiCoachPanel } from './AiCoachPanel';
 import { FeedbackPanel } from './FeedbackPanel';
-import { ArrowLeft, GraduationCap, Sparkles, Timer, BookOpenCheck, Loader2 } from 'lucide-react';
+import { ArrowLeft, Sparkles, Timer, BookOpenCheck, Loader2 } from 'lucide-react';
 
-type Step = 'pilih_level' | 'pilih_mod' | 'pilih_soalan' | 'faham_soalan' | 'menulis' | 'menilai' | 'maklum_balas';
+type Step = 'pilih_mod' | 'pilih_soalan' | 'faham_soalan' | 'menulis' | 'menilai' | 'maklum_balas';
 
 interface ArticulationScreenProps {
   user: UserProfile;
+  // Kategori Pelajar (Tahun 6 / Tingkatan 3) is already chosen once, upstream,
+  // at the PKSK root gate — Bahagian C reuses it instead of asking again.
+  kategoriPelajar: ArticulationLevel;
   onExit: () => void;
 }
 
@@ -27,13 +30,15 @@ function isiCountFor(level: ArticulationLevel): number {
   return level === 'Tahun 6' ? 3 : 4;
 }
 
-function tingkatanFor(user: UserProfile): string {
-  return user.school_form ? `Tingkatan ${user.school_form}` : user.school_year ? `Tahun ${user.school_year}` : 'Tidak dinyatakan';
+// exam_attempts.tingkatan is an integer column (plain Tingkatan/Tahun
+// number) — see the matching fix in App.tsx's pkskTingkatanInt.
+function tingkatanFor(user: UserProfile): number {
+  return user.school_form || user.school_year || 0;
 }
 
-export const ArticulationScreen: React.FC<ArticulationScreenProps> = ({ user, onExit }) => {
-  const [step, setStep] = useState<Step>('pilih_level');
-  const [level, setLevel] = useState<ArticulationLevel | null>(null);
+export const ArticulationScreen: React.FC<ArticulationScreenProps> = ({ user, kategoriPelajar, onExit }) => {
+  const [step, setStep] = useState<Step>('pilih_mod');
+  const [level] = useState<ArticulationLevel>(kategoriPelajar);
   const [mode, setMode] = useState<ArticulationMode | null>(null);
   const [questions, setQuestions] = useState<ArticulationQuestion[]>([]);
   const [isLoadingQuestions, setIsLoadingQuestions] = useState(false);
@@ -47,26 +52,17 @@ export const ArticulationScreen: React.FC<ArticulationScreenProps> = ({ user, on
   const [latestFeedback, setLatestFeedback] = useState<EssayAiFeedback | null>(null);
   const [rounds, setRounds] = useState<EssayFeedbackRound[]>([]);
 
-  const handlePickLevel = (lvl: ArticulationLevel) => {
-    soundManager.playClick();
-    setLevel(lvl);
-    setStep('pilih_mod');
-  };
-
   const handlePickMode = async (m: ArticulationMode) => {
     soundManager.playClick();
     setMode(m);
     setStep('pilih_soalan');
-    if (level) {
-      setIsLoadingQuestions(true);
-      const qs = await fetchArticulationQuestions(level);
-      setQuestions(qs);
-      setIsLoadingQuestions(false);
-    }
+    setIsLoadingQuestions(true);
+    const qs = await fetchArticulationQuestions(level);
+    setQuestions(qs);
+    setIsLoadingQuestions(false);
   };
 
   const beginWriting = async (question: ArticulationQuestion, m: ArticulationMode) => {
-    if (!level) return;
     setSections({ pengenalan: '', isi: Array(isiCountFor(level)).fill(''), penutup: '' });
     setRounds([]);
     setLatestFeedback(null);
@@ -151,38 +147,10 @@ export const ArticulationScreen: React.FC<ArticulationScreenProps> = ({ user, on
 
   // ---------------------------------------------------------------- render
 
-  if (step === 'pilih_level') {
-    return (
-      <div className="max-w-xl mx-auto space-y-4 pb-12">
-        <button onClick={onExit} className="flex items-center gap-1.5 text-xs font-bold text-ink-500 hover:text-ink-700">
-          <ArrowLeft className="w-4 h-4" />
-          <span>Kembali</span>
-        </button>
-        <div className="text-center space-y-2">
-          <h1 className="text-xl font-display font-bold text-ink-900">Artikulasi Karangan</h1>
-          <p className="text-sm text-ink-500">Pilih tahap anda</p>
-        </div>
-        <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-          {(['Tahun 6', 'Tingkatan 3'] as ArticulationLevel[]).map((lvl) => (
-            <button
-              key={lvl}
-              onClick={() => handlePickLevel(lvl)}
-              className="bg-cream-50 hover:bg-mist-100 border border-sand-200 hover:border-mist-300 rounded-3xl p-6 text-center space-y-2 transition-colors"
-            >
-              <GraduationCap className="w-8 h-8 text-mist-600 mx-auto" />
-              <h3 className="text-lg font-display font-bold text-ink-900">{lvl}</h3>
-              <p className="text-xs text-ink-500">{lvl === 'Tahun 6' ? 'Sasaran ~100 patah perkataan' : 'Sasaran ~250 patah perkataan'}</p>
-            </button>
-          ))}
-        </div>
-      </div>
-    );
-  }
-
   if (step === 'pilih_mod') {
     return (
       <div className="max-w-xl mx-auto space-y-4 pb-12">
-        <button onClick={() => setStep('pilih_level')} className="flex items-center gap-1.5 text-xs font-bold text-ink-500 hover:text-ink-700">
+        <button onClick={onExit} className="flex items-center gap-1.5 text-xs font-bold text-ink-500 hover:text-ink-700">
           <ArrowLeft className="w-4 h-4" />
           <span>Kembali</span>
         </button>
