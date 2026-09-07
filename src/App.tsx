@@ -440,18 +440,13 @@ export default function App() {
     setView('result');
   };
 
-  // exam_attempts.tingkatan is an integer column (plain Tingkatan/Tahun
-  // number) — a "Tahun 6"/"Tingkatan 3" label string silently failed every
-  // insert (Postgres type mismatch), which is why no PKSK attempt ever saved.
-  const pkskTingkatanInt = (u: UserProfile) => u.school_form || u.school_year || 0;
-
-  // PKSK Practice completion — writes to exam_attempts/exam_attempt_questions/
-  // pksk_results (via savePkskAttempt), NOT saveAttempt/updateUserStats. PKSK
-  // has no coin/XP reward system, so those two params are accepted
-  // (ExamScreen's onCompleteExam signature is shared/generic) but ignored.
-  // Scores against pkskPracticeQuestions (the Aras Kesukaran + Panjang Sesi
-  // -limited set from handleStartPkskPractice), not every question in the
-  // section — see PKSK v2 restructure doc #1/#4.
+  // PKSK Practice completion — writes to pksk_attempts/pksk_attempt_answers
+  // (dedicated PKSK-only tables), NOT saveAttempt/updateUserStats. PKSK has
+  // no coin/XP reward system, so those two params are accepted (ExamScreen's
+  // onCompleteExam signature is shared/generic) but ignored. Scores against
+  // pkskPracticeQuestions (the Aras Kesukaran + Panjang Sesi -limited set
+  // from handleStartPkskPractice), not every question in the section — see
+  // PKSK v2 restructure doc #1/#4.
   const handleCompletePkskExam = async (
     _score: number,
     _total: number,
@@ -459,11 +454,11 @@ export default function App() {
     _xpEarned: number,
     answersMap: Record<string, string>
   ) => {
-    if (!activeSection || !activeSubject || !user) return;
+    if (!activeSection || !activeSubject || !user || !pkskKategoriPelajar) return;
 
     const result = await savePkskAttempt({
       user_id: user.id,
-      tingkatan: pkskTingkatanInt(user),
+      tingkatan: pkskKategoriPelajar,
       subject: activeSubject,
       section: activeSection,
       questions: pkskPracticeQuestions,
@@ -483,14 +478,14 @@ export default function App() {
   // answered as a valid attempt instead of discarding it (doc #4: progress
   // is always kept, even mid-block).
   const handleExitPkskPracticeEarly = async (answersMap: Record<string, string>) => {
-    if (!activeSection || !activeSubject || !user) {
+    if (!activeSection || !activeSubject || !user || !pkskKategoriPelajar) {
       setView('subject');
       return;
     }
 
     const result = await savePkskAttempt({
       user_id: user.id,
-      tingkatan: pkskTingkatanInt(user),
+      tingkatan: pkskKategoriPelajar,
       subject: activeSubject,
       section: activeSection,
       questions: pkskPracticeQuestions,
@@ -557,11 +552,11 @@ export default function App() {
     _xpEarned: number,
     answersMap: Record<string, string>
   ) => {
-    if (!user) return;
+    if (!user || !pkskKategoriPelajar) return;
 
     const result = await savePkskMixedExamAttempt({
       user_id: user.id,
-      tingkatan: pkskTingkatanInt(user),
+      tingkatan: pkskKategoriPelajar,
       questions: pkskExamQuestions,
       answersMap,
     });

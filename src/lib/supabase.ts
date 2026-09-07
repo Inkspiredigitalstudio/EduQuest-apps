@@ -1448,16 +1448,12 @@ export async function bulkAddPkskQuestionsToSupabase(
 }
 
 // ------------------------- PKSK attempt & scoring -------------------------
-// Writes to exam_attempts -> exam_attempt_questions -> pksk_results, NOT
+// Writes to pksk_attempts -> pksk_attempt_answers — dedicated PKSK-only
+// tables, no relation to exam_attempts/exam_attempt_questions/pksk_results
+// (the old tables shared with SPPIM, which kept surfacing SPPIM-only
+// foreign keys that silently blocked every PKSK write). Also NOT
 // saveAttempt/updateUserStats (those are the SPPIM coin/XP reward path,
 // which PKSK deliberately does not use — see plan doc #3c).
-
-// Confirmed by Ieda: Bahagian A = Kecerdasan Insaniah (0.2), Bahagian B =
-// Kecerdasan Intelek & Pengetahuan Am (0.7), Bahagian C = Artikulasi
-// Penulisan (0.1). Bahagian A/B are objective (this module); Bahagian C is
-// the essay module (Track B) and is written to markah_bahagian_c elsewhere
-// once that module exists — this function never writes that column itself.
-const PKSK_BAHAGIAN_WEIGHT = { a: 0.2, b: 0.7, c: 0.1 } as const;
 
 // Bahagian A/B scoring style is data-driven, not name-matched: a question
 // whose choices carry `nilai_skala` is scored on the confirmed 1-4 weighted
@@ -1468,11 +1464,7 @@ const PKSK_A_MAX_WEIGHT = 4;
 
 export async function savePkskAttempt(params: {
   user_id: string;
-  // exam_attempts.tingkatan is an integer column (NOT NULL) — the plain
-  // Tingkatan/Tahun number (e.g. 3 or 6), not a "Tahun 6"/"Tingkatan 3"
-  // label string. A string here silently failed every insert (Postgres
-  // rejects the type mismatch), which is why no PKSK attempt ever saved.
-  tingkatan: number;
+  tingkatan: 'Tahun 6' | 'Tingkatan 3';
   subject: Subject;
   section: Section;
   questions: Question[];
@@ -1482,49 +1474,14 @@ export async function savePkskAttempt(params: {
   try {
     const { user_id, tingkatan, subject, section, questions, answersMap } = params;
 
-    const bahagianCol =
-      subject.bahagian === 'A' ? 'markah_bahagian_a' : subject.bahagian === 'B' ? 'markah_bahagian_b' : null;
-    if (!bahagianCol) {
-      console.warn(`PKSK subject "${subject.name}" doesn't map to a known Bahagian (A/B) — skipping pksk_results write.`);
-      return null;
-    }
-
-    const { data: attemptData, error: attemptErr } = await supabase
-      .from('exam_attempts')
-      .insert({
-        user_id,
-        module: 'PKSK',
-        tingkatan,
-        status: 'completed',
-        started_at: new Date().toISOString(),
-        completed_at: new Date().toISOString(),
-      })
-      .select()
-      .single();
-    if (attemptErr || !attemptData) throw attemptErr || new Error('Tiada attempt data dikembalikan.');
-    const attemptId = attemptData.id;
-
-    const answerRows = questions.map((q) => {
-      const choiceId = answersMap[q.id];
-      const choice = q.choices.find((c) => c.id === choiceId);
-      return {
-        attempt_id: attemptId,
-        question_id: q.id,
-        selected_choice_id: choiceId || null,
-        is_correct: choice ? Boolean(choice.is_correct) : false,
-      };
-    });
-    if (answerRows.length > 0) {
-      const { error: aqErr } = await supabase.from('exam_attempt_questions').insert(answerRows);
-      if (aqErr) throw aqErr;
-    }
+    const bahagian = subject.bahagian === 'A' || subject.bahagian === 'B' ? subject.bahagian : null;
 
     // Weighted-scale (nilai_skala) scoring for Bahagian A (Insaniah/
     // Psikometrik — no is_correct, opinion/situational choices), binary
     // is_correct for Bahagian B. Same data-driven signal as
-    // savePkskMixedExamAttempt above.
+    // savePkskMixedExamAttempt below.
     let scoreSum = 0;
-    for (const q of questions) {
+    const answerRows = questions.map((q) => {
       const choiceId = answersMap[q.id];
       const choice = q.choices.find((c) => c.id === choiceId);
       const isWeighted = q.choices.some((c) => c.nilai_skala != null);
@@ -1533,53 +1490,41 @@ export async function savePkskAttempt(params: {
       } else if (choice?.is_correct) {
         scoreSum += 1;
       }
-    }
+      return {
+        question_id: q.id,
+        selected_choice_id: choiceId || null,
+        is_correct: choice ? Boolean(choice.is_correct) : false,
+      };
+    });
     const percent = questions.length > 0 ? Math.round((scoreSum / questions.length) * 100) : 0;
 
-    // jumlah_markah (weighted A+B+C) can only be computed once all three
-    // Bahagian have a score — Bahagian C comes from the separate Artikulasi
-    // (essay) module, which doesn't exist yet, so this is always null for
-    // now. Best score per Bahagian (not latest) matches the existing
-    // best_score convention used for SPPIM progress above.
-    let jumlahMarkah: number | null = null;
-    try {
-      const { data: priorAttempts } = await supabase
-        .from('exam_attempts')
-        .select('id')
-        .eq('user_id', user_id)
-        .eq('module', 'PKSK');
-      const attemptIds = (priorAttempts || []).map((a: any) => a.id);
-      if (attemptIds.length > 0) {
-        const { data: priorResults } = await supabase
-          .from('pksk_results')
-          .select('markah_bahagian_a, markah_bahagian_b, markah_bahagian_c')
-          .in('attempt_id', attemptIds);
-        let bestA: number | null = bahagianCol === 'markah_bahagian_a' ? percent : null;
-        let bestB: number | null = bahagianCol === 'markah_bahagian_b' ? percent : null;
-        let bestC: number | null = null;
-        for (const r of priorResults || []) {
-          if (typeof r.markah_bahagian_a === 'number') bestA = Math.max(bestA ?? 0, r.markah_bahagian_a);
-          if (typeof r.markah_bahagian_b === 'number') bestB = Math.max(bestB ?? 0, r.markah_bahagian_b);
-          if (typeof r.markah_bahagian_c === 'number') bestC = Math.max(bestC ?? 0, r.markah_bahagian_c);
-        }
-        if (bestA !== null && bestB !== null && bestC !== null) {
-          jumlahMarkah = Math.round(
-            bestA * PKSK_BAHAGIAN_WEIGHT.a + bestB * PKSK_BAHAGIAN_WEIGHT.b + bestC * PKSK_BAHAGIAN_WEIGHT.c
-          );
-        }
-      }
-    } catch (e) {
-      console.warn('Failed to compute PKSK jumlah_markah (non-fatal, left null):', e);
-    }
+    // pksk_attempts/pksk_attempt_answers are dedicated PKSK-only tables —
+    // no relation to exam_attempts/exam_attempt_questions/pksk_results (the
+    // old tables shared with SPPIM), which kept surfacing SPPIM-only
+    // foreign keys that silently blocked every PKSK write.
+    const { data: attemptData, error: attemptErr } = await supabase
+      .from('pksk_attempts')
+      .insert({
+        user_id,
+        module: 'practice',
+        bahagian,
+        tingkatan,
+        percent,
+        total_questions: questions.length,
+        started_at: new Date().toISOString(),
+        completed_at: new Date().toISOString(),
+      })
+      .select()
+      .single();
+    if (attemptErr || !attemptData) throw attemptErr || new Error('Tiada attempt data dikembalikan.');
+    const attemptId = attemptData.id;
 
-    // gred (letter grade bands) is intentionally left unset — no grading
-    // scale/bands have been confirmed yet.
-    const { error: resultErr } = await supabase.from('pksk_results').insert({
-      attempt_id: attemptId,
-      [bahagianCol]: percent,
-      ...(jumlahMarkah !== null ? { jumlah_markah: jumlahMarkah } : {}),
-    });
-    if (resultErr) throw resultErr;
+    if (answerRows.length > 0) {
+      const { error: aqErr } = await supabase
+        .from('pksk_attempt_answers')
+        .insert(answerRows.map((r) => ({ ...r, attempt_id: attemptId })));
+      if (aqErr) console.warn('PKSK attempt saved, but answer rows failed (non-fatal):', aqErr);
+    }
 
     // Local progress cache — same read-from-localStorage pattern the SPPIM
     // Dashboard's "Sambung Belajar" grid relies on (see saveAttempt /
@@ -1679,30 +1624,13 @@ export function getPkskExamSetQuestions(
 
 export async function savePkskMixedExamAttempt(params: {
   user_id: string;
-  // exam_attempts.tingkatan is an integer column — see savePkskAttempt above.
-  tingkatan: number;
+  tingkatan: 'Tahun 6' | 'Tingkatan 3';
   questions: Question[];
   answersMap: Record<string, string>;
 }): Promise<{ attempt_id: string; markahA: number | null; markahB: number | null } | null> {
   if (!isSupabaseConfigured || !supabase) return null;
   try {
     const { user_id, tingkatan, questions, answersMap } = params;
-
-    const { data: attemptData, error: attemptErr } = await supabase
-      .from('exam_attempts')
-      .insert({
-        user_id,
-        module: 'PKSK',
-        mode: 'exam',
-        tingkatan,
-        status: 'completed',
-        started_at: new Date().toISOString(),
-        completed_at: new Date().toISOString(),
-      })
-      .select()
-      .single();
-    if (attemptErr || !attemptData) throw attemptErr || new Error('Tiada attempt data dikembalikan.');
-    const attemptId = attemptData.id;
 
     let aWeightSum = 0;
     let aWeightMax = 0;
@@ -1723,56 +1651,40 @@ export async function savePkskMixedExamAttempt(params: {
       }
 
       return {
-        attempt_id: attemptId,
         question_id: q.id,
         selected_choice_id: choiceId || null,
         is_correct: choice ? Boolean(choice.is_correct) : false,
       };
     });
-    if (answerRows.length > 0) {
-      const { error: aqErr } = await supabase.from('exam_attempt_questions').insert(answerRows);
-      if (aqErr) throw aqErr;
-    }
 
     const markahA = aWeightMax > 0 ? Math.round((aWeightSum / aWeightMax) * 100) : null;
     const markahB = bTotal > 0 ? Math.round((bCorrect / bTotal) * 100) : null;
 
-    // jumlah_markah needs Bahagian C too (separate Artikulasi essay module) —
-    // best-of-history lookup, same convention as savePkskAttempt above.
-    let jumlahMarkah: number | null = null;
-    try {
-      const { data: priorAttempts } = await supabase
-        .from('exam_attempts')
-        .select('id')
-        .eq('user_id', user_id)
-        .eq('module', 'PKSK');
-      const attemptIds = (priorAttempts || []).map((a: any) => a.id);
-      let bestC: number | null = null;
-      if (attemptIds.length > 0) {
-        const { data: priorResults } = await supabase
-          .from('pksk_results')
-          .select('markah_bahagian_c')
-          .in('attempt_id', attemptIds);
-        for (const r of priorResults || []) {
-          if (typeof r.markah_bahagian_c === 'number') bestC = Math.max(bestC ?? 0, r.markah_bahagian_c);
-        }
-      }
-      if (markahA !== null && markahB !== null && bestC !== null) {
-        jumlahMarkah = Math.round(
-          markahA * PKSK_BAHAGIAN_WEIGHT.a + markahB * PKSK_BAHAGIAN_WEIGHT.b + bestC * PKSK_BAHAGIAN_WEIGHT.c
-        );
-      }
-    } catch (e) {
-      console.warn('Failed to compute PKSK jumlah_markah (non-fatal, left null):', e);
-    }
+    // pksk_attempts/pksk_attempt_answers — same dedicated PKSK-only tables
+    // as savePkskAttempt above.
+    const { data: attemptData, error: attemptErr } = await supabase
+      .from('pksk_attempts')
+      .insert({
+        user_id,
+        module: 'exam',
+        tingkatan,
+        total_questions: questions.length,
+        markah_bahagian_a: markahA,
+        markah_bahagian_b: markahB,
+        started_at: new Date().toISOString(),
+        completed_at: new Date().toISOString(),
+      })
+      .select()
+      .single();
+    if (attemptErr || !attemptData) throw attemptErr || new Error('Tiada attempt data dikembalikan.');
+    const attemptId = attemptData.id;
 
-    const { error: resultErr } = await supabase.from('pksk_results').insert({
-      attempt_id: attemptId,
-      ...(markahA !== null ? { markah_bahagian_a: markahA } : {}),
-      ...(markahB !== null ? { markah_bahagian_b: markahB } : {}),
-      ...(jumlahMarkah !== null ? { jumlah_markah: jumlahMarkah } : {}),
-    });
-    if (resultErr) throw resultErr;
+    if (answerRows.length > 0) {
+      const { error: aqErr } = await supabase
+        .from('pksk_attempt_answers')
+        .insert(answerRows.map((r) => ({ ...r, attempt_id: attemptId })));
+      if (aqErr) console.warn('PKSK exam attempt saved, but answer rows failed (non-fatal):', aqErr);
+    }
 
     return { attempt_id: attemptId, markahA, markahB };
   } catch (e) {
