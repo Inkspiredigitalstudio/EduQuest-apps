@@ -732,7 +732,7 @@ export default function App() {
           />
         )}
 
-        {view === 'uasa-practice' && uasaPracticeQuestions.length > 0 && (
+        {view === 'uasa-practice' && (
           <ExamScreen
             questions={uasaPracticeQuestions}
             user={user}
