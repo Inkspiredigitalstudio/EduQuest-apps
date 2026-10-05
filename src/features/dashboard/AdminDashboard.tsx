@@ -606,8 +606,8 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
           <h1 className="text-lg font-display font-bold text-ink-900">Pengurusan Bank Soalan</h1>
           <div className="flex items-center gap-2 overflow-x-auto pb-1 scrollbar-none">
             {[
-              { id: 'sppim', name: 'SPPIM', active: true },
               { id: 'uasa', name: 'UASA', active: true },
+              { id: 'sppim', name: 'SPPIM', active: true },
               { id: 'pksk', name: 'PKSK', active: false },
             ].map((mod) => {
               const isSelected = activeModuleTab === mod.id;

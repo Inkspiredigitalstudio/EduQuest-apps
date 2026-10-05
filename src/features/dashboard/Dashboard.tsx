@@ -127,14 +127,14 @@ export const Dashboard: React.FC<DashboardProps> = ({
   pkskExamSetReady,
   onOpenUasa,
 }) => {
-  const [activeModuleTab, setActiveModuleTab] = React.useState<'sppim' | 'pksk' | 'uasa'>('sppim');
+  const [activeModuleTab, setActiveModuleTab] = React.useState<'sppim' | 'pksk' | 'uasa'>('uasa');
 
   // PKSK deactivated temporarily per explicit instruction (2026-10-05) — code
   // and data untouched, just not reachable from this tab bar for now. SPPIM
   // and UASA are the two active modules.
   const hubModules = [
-    { id: 'sppim', name: 'SPPIM', active: true },
     { id: 'uasa', name: 'UASA', active: true },
+    { id: 'sppim', name: 'SPPIM', active: true },
     { id: 'pksk', name: 'PKSK', active: false },
   ];
 
