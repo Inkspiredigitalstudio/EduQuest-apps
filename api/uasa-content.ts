@@ -37,10 +37,7 @@ async function requireAdmin(sb: SupabaseClient, adminUserId: string) {
   if (!adminUserId) throw new Error('admin_user_id diperlukan.');
   const { data, error } = await sb.from('users').select('role').eq('id', adminUserId).single();
   if (error || !data || data.role !== 'admin') {
-    // Temporary diagnostic detail (id + lookup error) while chasing a
-    // client/session id-mismatch report — remove once resolved.
-    const detail = error ? `lookup error: ${error.message}` : !data ? 'no row found' : `role='${data.role}'`;
-    const err: any = new Error(`Akses ditolak: akaun ini bukan admin. [debug: id=${adminUserId}, ${detail}]`);
+    const err: any = new Error('Akses ditolak: akaun ini bukan admin.');
     err.statusCode = 403;
     throw err;
   }
