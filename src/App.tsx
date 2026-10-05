@@ -188,7 +188,7 @@ export default function App() {
   // lifted here (rather than living only inside AdminDashboard) so
   // handleAddQuestion/etc. below know whether to write to the SPPIM or
   // PKSK tables.
-  const [adminActiveModule, setAdminActiveModule] = useState<'sppim' | 'pksk'>('sppim');
+  const [adminActiveModule, setAdminActiveModule] = useState<'sppim' | 'pksk' | 'uasa'>('sppim');
 
   // Modals (Student flow)
   const [isAuthOpen, setIsAuthOpen] = useState(false);

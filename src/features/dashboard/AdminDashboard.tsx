@@ -3,6 +3,7 @@ import { UserProfile, Subject, Paper, Section, Question, Choice } from '../../ty
 import { isSupabaseConfigured, getAllRegisteredUsers, resetUserPassword, updateUserProfileFields, deleteUserAccount, registerUser, testSupabaseConnection, supabaseDiagnostic } from '../../lib/supabase';
 import { SUPABASE_SQL_SETUP_DDL } from '../../data/seedData';
 import { soundManager } from '../../lib/audio';
+import { UasaAdminPanel } from './UasaAdminPanel';
 import {
   Shield, Database, Plus, CheckCircle2, Code2, Copy, LogOut, Sun, Moon,
   Pencil, Trash2, X, AlertCircle, Upload, ListChecks, Lock, Users, Search, KeyRound, RefreshCw,
@@ -599,14 +600,15 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
       </header>
 
       <main className="max-w-5xl mx-auto px-4 sm:px-6 py-6 space-y-6 pb-14">
-        {/* Module selector — SPPIM & PKSK active, UASA reserved for a future module */}
+        {/* Module selector — SPPIM & UASA active; PKSK deactivated temporarily
+            (data/code untouched, just hidden from this tab bar for now). */}
         <div className="space-y-2">
           <h1 className="text-lg font-display font-bold text-ink-900">Pengurusan Bank Soalan</h1>
           <div className="flex items-center gap-2 overflow-x-auto pb-1 scrollbar-none">
             {[
               { id: 'sppim', name: 'SPPIM', active: true },
-              { id: 'pksk', name: 'PKSK', active: true },
-              { id: 'uasa', name: 'UASA', active: false },
+              { id: 'uasa', name: 'UASA', active: true },
+              { id: 'pksk', name: 'PKSK', active: false },
             ].map((mod) => {
               const isSelected = activeModuleTab === mod.id;
               return (
@@ -635,13 +637,15 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
         </div>
 
         {activeModuleTab === 'uasa' ? (
+          <UasaAdminPanel user={user} />
+        ) : activeModuleTab === 'pksk' ? (
           <div className="bg-cream-50 border border-sand-200 rounded-3xl p-8 text-center space-y-3">
             <div className="w-12 h-12 rounded-2xl bg-cream-100 flex items-center justify-center mx-auto text-ink-500">
               <Lock className="w-6 h-6" />
             </div>
-            <h3 className="text-base font-display font-bold text-ink-900">Modul Ini Belum Aktif</h3>
+            <h3 className="text-base font-display font-bold text-ink-900">Modul PKSK Dinyahaktifkan Sementara</h3>
             <p className="text-xs text-ink-500 max-w-sm mx-auto">
-              Kerangka navigasi untuk modul ini sudah disediakan supaya senang dikembangkan kelak, tetapi bank soalan &amp; struktur kertas untuk modul ini belum dibina.
+              Data &amp; kod PKSK tidak disentuh — pengurusan bank soalan PKSK hanya disorokkan sementara dari panel admin ini.
             </p>
           </div>
         ) : (

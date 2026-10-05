@@ -153,3 +153,136 @@ export interface UasaFinishExamResult {
 export async function finishUasaExam(attemptId: string): Promise<UasaFinishExamResult> {
   return callUasaApi('finish_exam', { attempt_id: attemptId });
 }
+
+// ------------------------- Admin: reads (direct client — public SELECT RLS
+// allows every status, filtering is just app-side query params) -------------------------
+
+export async function adminListUasaSubjects(): Promise<UasaSubject[]> {
+  if (!isSupabaseConfigured || !supabase) return [];
+  const { data, error } = await supabase.from('uasa_subjects').select('*').order('name');
+  if (error) {
+    console.warn('adminListUasaSubjects failed:', error);
+    return [];
+  }
+  return data || [];
+}
+
+export async function adminListUasaChapters(subjectId?: string, year?: UasaYear): Promise<UasaChapter[]> {
+  if (!isSupabaseConfigured || !supabase) return [];
+  let query = supabase.from('uasa_chapters').select('*').order('order_index');
+  if (subjectId) query = query.eq('subject_id', subjectId);
+  if (year) query = query.eq('year', year);
+  const { data, error } = await query;
+  if (error) {
+    console.warn('adminListUasaChapters failed:', error);
+    return [];
+  }
+  return data || [];
+}
+
+export interface AdminQuestionFilters {
+  year?: UasaYear;
+  subjectId?: string;
+  chapterId?: string;
+  bahagian?: UasaBahagian;
+}
+
+export async function adminListUasaQuestions(
+  filters: AdminQuestionFilters,
+  page: number,
+  pageSize: number
+): Promise<{ rows: UasaQuestion[]; total: number }> {
+  if (!isSupabaseConfigured || !supabase) return { rows: [], total: 0 };
+  let query = supabase.from('uasa_questions').select('*, uasa_choices(*)', { count: 'exact' });
+  if (filters.year) query = query.eq('year', filters.year);
+  if (filters.subjectId) query = query.eq('subject_id', filters.subjectId);
+  if (filters.chapterId) query = query.eq('chapter_id', filters.chapterId);
+  if (filters.bahagian) query = query.eq('bahagian', filters.bahagian);
+
+  const from = (page - 1) * pageSize;
+  const { data, error, count } = await query.order('created_at', { ascending: false }).range(from, from + pageSize - 1);
+  if (error) {
+    console.warn('adminListUasaQuestions failed:', error);
+    return { rows: [], total: 0 };
+  }
+  const rows = (data || []).map((q: any) => ({ ...q, choices: (q.uasa_choices || []).sort((a: any, b: any) => a.order_index - b.order_index) }));
+  return { rows, total: count || 0 };
+}
+
+// ------------------------- Admin: writes (service role via /api/uasa-content) -------------------------
+
+export async function adminCreateUasaSubject(adminUserId: string, subject: Partial<UasaSubject>) {
+  return callUasaContentApi('create_subject', { admin_user_id: adminUserId, subject });
+}
+
+export async function adminUpdateUasaSubject(adminUserId: string, subjectId: string, patch: Partial<UasaSubject>) {
+  return callUasaContentApi('update_subject', { admin_user_id: adminUserId, subject_id: subjectId, patch });
+}
+
+export async function adminCreateUasaChapter(adminUserId: string, chapter: Partial<UasaChapter>) {
+  return callUasaContentApi('create_chapter', { admin_user_id: adminUserId, chapter });
+}
+
+export async function adminUpdateUasaChapter(adminUserId: string, chapterId: string, patch: Partial<UasaChapter>) {
+  return callUasaContentApi('update_chapter', { admin_user_id: adminUserId, chapter_id: chapterId, patch });
+}
+
+export interface AdminQuestionInput {
+  chapter_id: string;
+  subject_id: string;
+  year: UasaYear;
+  question_text: string;
+  explanation: string;
+  bahagian: UasaBahagian;
+  difficulty?: number;
+  is_kbat?: boolean;
+  marks?: number;
+  image_url?: string;
+  status?: string;
+  choices: { option_text: string; is_correct: boolean }[];
+}
+
+export async function adminCreateUasaQuestion(adminUserId: string, question: AdminQuestionInput) {
+  return callUasaContentApi('create_question', { admin_user_id: adminUserId, question });
+}
+
+export async function adminUpdateUasaQuestion(
+  adminUserId: string,
+  questionId: string,
+  patch: Partial<AdminQuestionInput>,
+  choices?: { option_text: string; is_correct: boolean }[]
+) {
+  return callUasaContentApi('update_question', { admin_user_id: adminUserId, question_id: questionId, patch, choices });
+}
+
+export async function adminDeleteUasaQuestion(adminUserId: string, questionId: string) {
+  return callUasaContentApi('delete_question', { admin_user_id: adminUserId, question_id: questionId });
+}
+
+export interface AdminBulkImportResult {
+  inserted?: number;
+  total?: number;
+  insertErrors?: Record<number, string>;
+  errors?: Record<string, string[]>;
+  warnings?: string[];
+}
+
+export async function adminBulkImportUasaQuestions(adminUserId: string, items: AdminQuestionInput[]): Promise<AdminBulkImportResult> {
+  return callUasaContentApi('bulk_import', { admin_user_id: adminUserId, items });
+}
+
+async function callUasaContentApi<T = any>(action: string, payload: any): Promise<T> {
+  const res = await fetch('/api/uasa-content', {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+      ...(UASA_API_KEY ? { 'x-uasa-api-key': UASA_API_KEY } : {}),
+    },
+    body: JSON.stringify({ action, payload }),
+  });
+  const body = await res.json().catch(() => ({}));
+  if (!res.ok) {
+    throw new Error(body?.error || `UASA Content API gagal (status ${res.status}).`);
+  }
+  return body as T;
+}
