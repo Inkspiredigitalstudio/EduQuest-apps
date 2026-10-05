@@ -1,13 +1,13 @@
 importScripts('https://storage.googleapis.com/workbox-cdn/releases/6.5.4/workbox-sw.js');
 
-const CACHE_NAME = 'sppi-quest-v3';
+const CACHE_NAME = 'sppi-quest-v4';
 
 if (self.workbox) {
   console.log('[Workbox] Service Worker loaded successfully.');
 
   workbox.core.setCacheNameDetails({
     prefix: 'sppi-quest',
-    suffix: 'v3',
+    suffix: 'v4',
     precache: 'app-shell',
     runtime: 'runtime',
   });
@@ -15,12 +15,16 @@ if (self.workbox) {
   workbox.core.skipWaiting();
   workbox.core.clientsClaim();
 
-  // 1. Precache Core App Shell Assets
+  // 1. Precache Core App Shell Assets — deliberately NOT '/' or '/index.html'
+  // here. A precached entry takes priority over the NetworkFirst route
+  // below in Workbox, and this list's hardcoded revision string never
+  // changes across deploys, so precaching the HTML shell permanently froze
+  // returning users on whatever build was live when they first installed
+  // the SW. NetworkFirst (route #2 below) already covers page navigations
+  // correctly without that trap.
   workbox.precaching.precacheAndRoute([
-    { url: '/', revision: 'v3' },
-    { url: '/index.html', revision: 'v3' },
-    { url: '/manifest.json', revision: 'v3' },
-    { url: '/icon.svg', revision: 'v3' },
+    { url: '/manifest.json', revision: 'v4' },
+    { url: '/icon.svg', revision: 'v4' },
   ]);
 
   // 2. Cache HTML/SPA Page Navigations (NetworkFirst -> Cache)

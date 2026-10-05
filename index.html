@@ -42,6 +42,16 @@
             .then((reg) => console.log('[PWA] Service Worker registered:', reg.scope))
             .catch((err) => console.warn('[PWA] Service Worker registration failed:', err));
         });
+
+        // Auto-reload once when a new service worker takes control, so a
+        // deploy that's already live doesn't stay invisible to a tab that
+        // was open before it shipped.
+        let swRefreshing = false;
+        navigator.serviceWorker.addEventListener('controllerchange', () => {
+          if (swRefreshing) return;
+          swRefreshing = true;
+          window.location.reload();
+        });
       }
     </script>
   </body>
