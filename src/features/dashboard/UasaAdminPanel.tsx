@@ -15,7 +15,7 @@ import {
   AdminBulkImportResult,
 } from '../../lib/uasa';
 import { soundManager } from '../../lib/audio';
-import { Plus, Upload, Pencil, Trash2, X, AlertCircle, CheckCircle2, ChevronLeft, ChevronRight } from 'lucide-react';
+import { Plus, Upload, Pencil, Trash2, X, AlertCircle, CheckCircle2, ChevronLeft, ChevronRight, FileUp } from 'lucide-react';
 
 const IMPORT_PLACEHOLDER = `[
   {
@@ -225,6 +225,27 @@ export const UasaAdminPanel: React.FC<UasaAdminPanelProps> = ({ user }) => {
     }
   };
 
+  // Reads the .json file directly via FileReader instead of relying on
+  // copy-paste — copy-paste through some apps (Notes, Word, some mobile
+  // keyboards) silently swaps straight quotes (") for smart/curly quotes
+  // ("" / '' ), which breaks JSON.parse with cryptic "Expected
+  // double-quoted property name" errors. Reading the file bytes directly
+  // sidesteps that entirely.
+  const handleFileUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    const reader = new FileReader();
+    reader.onload = () => {
+      setImportText(String(reader.result || ''));
+      setImportResult(null);
+    };
+    reader.onerror = () => {
+      alert('Gagal baca fail. Cuba lagi atau guna paste manual.');
+    };
+    reader.readAsText(file, 'utf-8');
+    e.target.value = '';
+  };
+
   const handleCreateSubject = async () => {
     if (!newSubjectName.trim()) return;
     await adminCreateUasaSubject(user.id, { name: newSubjectName.trim(), icon: 'BookOpen', color: 'from-mist-400 to-mist-500', status: 'active' });
@@ -388,6 +409,12 @@ export const UasaAdminPanel: React.FC<UasaAdminPanelProps> = ({ user }) => {
             <p className="text-xs text-ink-500">
               Validator automatik semak: tepat 4 pilihan, tepat 1 jawapan betul, teks/penerangan tidak kosong, duplicate dalam bab yang sama, dan amaran taburan jawapan tidak seimbang.
             </p>
+            <label className="w-full flex items-center justify-center gap-2 py-3 bg-cream-100 hover:bg-cream-200 border-2 border-dashed border-sand-300 text-ink-700 font-bold text-sm rounded-xl cursor-pointer transition-colors">
+              <FileUp className="w-4 h-4" />
+              <span>Upload Fail .json</span>
+              <input type="file" accept=".json,application/json" onChange={handleFileUpload} className="hidden" />
+            </label>
+            <p className="text-[11px] text-ink-500 text-center">— atau paste JSON terus di bawah (elak paste dari Notes/Word, tanda petik boleh rosak) —</p>
             <textarea
               value={importText}
               onChange={(e) => setImportText(e.target.value)}
