@@ -9,7 +9,7 @@ const ICON_MAP: Record<string, React.FC<{ className?: string }>> = { BookOpen, H
 interface UasaEntryProps {
   subjects: UasaSubject[];
   onStartPractice: (year: UasaYear, subject: UasaSubject, chapter: UasaChapter) => void;
-  onStartExam: (year: UasaYear, subject: UasaSubject) => void;
+  onStartExam: (year: UasaYear, subject: UasaSubject) => Promise<void> | void;
   onBack: () => void;
 }
 
@@ -21,6 +21,7 @@ export const UasaEntry: React.FC<UasaEntryProps> = ({ subjects, onStartPractice,
   const [subject, setSubject] = useState<UasaSubject | null>(null);
   const [chapters, setChapters] = useState<UasaChapter[]>([]);
   const [isLoadingChapters, setIsLoadingChapters] = useState(false);
+  const [isStartingExam, setIsStartingExam] = useState(false);
 
   useEffect(() => {
     if (step !== 'chapter' || !subject || !year) return;
@@ -127,11 +128,18 @@ export const UasaEntry: React.FC<UasaEntryProps> = ({ subjects, onStartPractice,
           </button>
 
           <button
-            onClick={() => {
+            disabled={isStartingExam}
+            onClick={async () => {
+              if (isStartingExam) return;
               soundManager.playClick();
-              onStartExam(year, subject);
+              setIsStartingExam(true);
+              try {
+                await onStartExam(year, subject);
+              } finally {
+                setIsStartingExam(false);
+              }
             }}
-            className="w-full text-left rounded-3xl bg-clay-100 hover:bg-clay-200/70 border border-clay-200 p-5 flex items-center justify-between gap-4 transition-colors"
+            className="w-full text-left rounded-3xl bg-clay-100 hover:bg-clay-200/70 border border-clay-200 p-5 flex items-center justify-between gap-4 transition-colors disabled:opacity-60 disabled:cursor-not-allowed"
           >
             <div className="flex items-center gap-3.5">
               <div className="w-12 h-12 rounded-2xl bg-cream-50 text-clay-500 shadow-sm flex items-center justify-center">
@@ -139,7 +147,9 @@ export const UasaEntry: React.FC<UasaEntryProps> = ({ subjects, onStartPractice,
               </div>
               <div>
                 <h3 className="text-base font-display font-bold text-ink-900">Exam UASA</h3>
-                <p className="text-xs text-ink-500">75 minit • Bahagian A+B+C • 50 markah</p>
+                <p className="text-xs text-ink-500">
+                  {isStartingExam ? 'Sedang mula exam...' : '75 minit • Bahagian A+B+C • 50 markah'}
+                </p>
               </div>
             </div>
             <ArrowRight className="w-5 h-5 text-clay-500" />
