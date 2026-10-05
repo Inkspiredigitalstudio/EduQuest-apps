@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { UserProfile, Subject, Paper, Section, Question, UserProgress, DailyMission } from './types';
+import { UserProfile, Subject, Paper, Section, Question, UserProgress, DailyMission, UasaSubject, UasaChapter, UasaYear } from './types';
 import { DEFAULT_DAILY_MISSIONS } from './data/seedData';
 import {
   getCurrentUser,
@@ -25,6 +25,15 @@ import {
   savePkskMixedExamAttempt,
   PkskExamTingkatan,
 } from './lib/supabase';
+import {
+  fetchUasaSubjects,
+  fetchUasaQuestionsForChapter,
+  saveUasaPracticeAttempt,
+  startOrResumeUasaExam,
+  finishUasaExam,
+  UasaStartExamResult,
+  UasaFinishExamResult,
+} from './lib/uasa';
 import { soundManager } from './lib/audio';
 
 // Components
@@ -44,6 +53,13 @@ import { AdminDashboard } from './components/AdminDashboard';
 // PKSK Artikulasi Karangan (Track B) — standalone screen, entered from the
 // PKSK hub card in Dashboard once a subject/mode is picked internally.
 import { ArticulationScreen } from './features/articulation/ArticulationScreen';
+
+// UASA — fully independent module (own tables, own screens). Entered from
+// the UASA hub card in Dashboard.
+import { UasaEntry } from './features/uasa/UasaEntry';
+import { UasaExamScreen } from './features/uasa/UasaExamScreen';
+import { UasaExamResult } from './features/uasa/UasaExamResult';
+import { UasaPracticeResult } from './features/uasa/UasaPracticeResult';
 
 // New Milestone Modals
 import { RoleSelectionModal } from './features/auth/RoleSelectionModal';
@@ -86,6 +102,11 @@ export default function App() {
     | 'pksk-exam-level'
     | 'pksk-exam'
     | 'pksk-exam-result'
+    | 'uasa-entry'
+    | 'uasa-practice'
+    | 'uasa-practice-result'
+    | 'uasa-exam'
+    | 'uasa-exam-result'
   >('dashboard');
   const [activeNavTab, setActiveNavTab] = useState<'home' | 'battle' | 'achievements' | 'leaderboard' | 'profile'>('home');
 
@@ -136,6 +157,27 @@ export default function App() {
   // A+B sitting, separate from Practice Mode's per-section flow above.
   const [pkskExamQuestions, setPkskExamQuestions] = useState<Question[]>([]);
   const [pkskExamResult, setPkskExamResult] = useState<{ markahA: number | null; markahB: number | null } | null>(null);
+
+  // UASA — fully independent module, own tables (uasa_*), own state. Never
+  // merged with SPPIM/PKSK arrays above.
+  const [uasaSubjects, setUasaSubjects] = useState<UasaSubject[]>([]);
+  const [uasaYear, setUasaYear] = useState<UasaYear | null>(null);
+  const [uasaSubject, setUasaSubject] = useState<UasaSubject | null>(null);
+  const [uasaChapter, setUasaChapter] = useState<UasaChapter | null>(null);
+  const [uasaPracticeQuestions, setUasaPracticeQuestions] = useState<Question[]>([]);
+  const [uasaPracticeResult, setUasaPracticeResult] = useState<{
+    score: number;
+    total: number;
+    percent: number;
+    coinsEarned: number;
+    xpEarned: number;
+  } | null>(null);
+  const [uasaExamData, setUasaExamData] = useState<UasaStartExamResult | null>(null);
+  const [uasaExamResult, setUasaExamResult] = useState<UasaFinishExamResult | null>(null);
+
+  useEffect(() => {
+    fetchUasaSubjects().then(setUasaSubjects);
+  }, []);
 
   // Which module the current subject/section/exam selection belongs to —
   // decided at selection time by checking which dataset the id came from,
@@ -498,6 +540,75 @@ export default function App() {
     setView('dashboard');
   };
 
+  // ---------------------------------------------------------------------
+  // UASA handlers — fully independent of SPPIM/PKSK saveAttempt/updateUserStats
+  // call sites above. Practice reuses the shared ExamScreen component (same
+  // coin/xp formula as SPPIM/PKSK, per spec) via an adapter below; Exam Mode
+  // uses its own dedicated UasaExamScreen (no immediate right/wrong reveal).
+  // ---------------------------------------------------------------------
+  const uasaQuestionToQuestion = (q: { id: string; chapter_id: string; question_text: string; explanation?: string; image_url?: string; choices: { id: string; question_id: string; option_text: string; is_correct: boolean }[] }, order: number): Question => ({
+    id: q.id,
+    section_id: q.chapter_id,
+    question_text: q.question_text,
+    explanation: q.explanation || '',
+    order,
+    image_url: q.image_url,
+    choices: q.choices,
+  });
+
+  const handleUasaStartPractice = async (year: UasaYear, subject: UasaSubject, chapter: UasaChapter) => {
+    const uasaQuestions = await fetchUasaQuestionsForChapter(chapter.id);
+    setUasaYear(year);
+    setUasaSubject(subject);
+    setUasaChapter(chapter);
+    setUasaPracticeQuestions(uasaQuestions.map((q, idx) => uasaQuestionToQuestion(q, idx + 1)));
+    setView('uasa-practice');
+  };
+
+  const handleCompleteUasaPractice = async (
+    score: number,
+    total: number,
+    coinsEarned: number,
+    xpEarned: number,
+    answersMap: Record<string, string>
+  ) => {
+    if (!user || !uasaYear || !uasaSubject || !uasaChapter) return;
+
+    const { percent } = await saveUasaPracticeAttempt({
+      user_id: user.id,
+      year: uasaYear,
+      subject_id: uasaSubject.id,
+      chapter_id: uasaChapter.id,
+      answers: Object.entries(answersMap).map(([question_id, choice_id]) => ({ question_id, choice_id })),
+    });
+
+    const updatedUser = await updateUserStats(user, coinsEarned, xpEarned);
+    setUser(updatedUser);
+    setUasaPracticeResult({ score, total, percent, coinsEarned, xpEarned });
+    setView('uasa-practice-result');
+  };
+
+  const handleUasaStartExam = async (year: UasaYear, subject: UasaSubject) => {
+    if (!user) {
+      setIsAuthOpen(true);
+      return;
+    }
+    setUasaYear(year);
+    setUasaSubject(subject);
+    try {
+      const data = await startOrResumeUasaExam({ user_id: user.id, year, subject_id: subject.id });
+      if (data.expired && data.attempt && data.wrongAnswers) {
+        setUasaExamResult({ attempt: data.attempt, wrongAnswers: data.wrongAnswers });
+        setView('uasa-exam-result');
+        return;
+      }
+      setUasaExamData(data);
+      setView('uasa-exam');
+    } catch (e) {
+      alert(e instanceof Error ? e.message : 'Gagal mulakan exam UASA.');
+    }
+  };
+
   const activeQuestions = activeSection
     ? (activeModule === 'pksk' ? pkskQuestions : questions).filter((q) => q.section_id === activeSection.id)
     : [];
@@ -598,11 +709,66 @@ export default function App() {
               getPkskExamSetQuestions(pkskPapers, pkskSections, pkskQuestions, 'Tahun 6') !== null ||
               getPkskExamSetQuestions(pkskPapers, pkskSections, pkskQuestions, 'Tingkatan 3') !== null
             }
+            onOpenUasa={() => {
+              if (!user) {
+                setIsAuthOpen(true);
+                return;
+              }
+              setView('uasa-entry');
+            }}
           />
         )}
 
         {view === 'articulation' && user && (
           <ArticulationScreen user={user} onExit={() => setView('dashboard')} />
+        )}
+
+        {view === 'uasa-entry' && (
+          <UasaEntry
+            subjects={uasaSubjects}
+            onStartPractice={handleUasaStartPractice}
+            onStartExam={handleUasaStartExam}
+            onBack={() => setView('dashboard')}
+          />
+        )}
+
+        {view === 'uasa-practice' && uasaPracticeQuestions.length > 0 && (
+          <ExamScreen
+            questions={uasaPracticeQuestions}
+            user={user}
+            onCompleteExam={handleCompleteUasaPractice}
+            onCancel={() => setView('uasa-entry')}
+            explanationLabel="Penerangan:"
+          />
+        )}
+
+        {view === 'uasa-practice-result' && uasaPracticeResult && (
+          <UasaPracticeResult
+            score={uasaPracticeResult.score}
+            total={uasaPracticeResult.total}
+            percent={uasaPracticeResult.percent}
+            coinsEarned={uasaPracticeResult.coinsEarned}
+            xpEarned={uasaPracticeResult.xpEarned}
+            chapterName={uasaChapter?.name || ''}
+            onRetry={() => setView('uasa-entry')}
+            onGoDashboard={() => setView('dashboard')}
+          />
+        )}
+
+        {view === 'uasa-exam' && uasaExamData && (
+          <UasaExamScreen
+            data={uasaExamData}
+            finishExam={finishUasaExam}
+            onFinish={(result) => {
+              setUasaExamResult(result);
+              setView('uasa-exam-result');
+            }}
+            onExit={() => setView('dashboard')}
+          />
+        )}
+
+        {view === 'uasa-exam-result' && uasaExamResult && (
+          <UasaExamResult result={uasaExamResult} onGoDashboard={() => setView('dashboard')} />
         )}
 
         {view === 'pksk-exam-level' && (

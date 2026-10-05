@@ -227,3 +227,92 @@ export interface EssayFeedbackRound {
   maklum_balas_ai: string; // JSON-encoded EssayAiFeedback
   created_at: string;
 }
+
+// ------------------------- UASA (fully independent of SPPIM & PKSK) -------------------------
+// uasa_* tables have zero foreign keys into subjects/papers/sections/questions/
+// choices/progress/attempts (SPPIM) or any pksk_* table. Deliberately separate
+// hierarchy: Subject -> Chapter (per tahun 3|5|6) -> Question (bahagian A|B|C,
+// tagged with marks/difficulty/is_kbat for Exam Mode's random draw) -> Choice.
+
+export type UasaYear = 3 | 5 | 6;
+export type UasaBahagian = 'A' | 'B' | 'C';
+export type UasaModule = 'practice' | 'exam';
+export type UasaContentStatus = 'draft' | 'active' | 'locked';
+
+export interface UasaSubject {
+  id: string;
+  name: string;
+  icon: string;
+  color: string;
+  description?: string;
+  status: UasaContentStatus;
+  created_at?: string;
+}
+
+export interface UasaChapter {
+  id: string;
+  subject_id: string;
+  year: UasaYear;
+  name: string;
+  order_index: number;
+  status: UasaContentStatus;
+  created_at?: string;
+}
+
+export interface UasaChoice {
+  id: string;
+  question_id: string;
+  option_text: string;
+  is_correct: boolean;
+  order_index: number;
+}
+
+export interface UasaQuestion {
+  id: string;
+  chapter_id: string;
+  subject_id: string;
+  year: UasaYear;
+  question_text: string;
+  explanation?: string;
+  bahagian: UasaBahagian;
+  difficulty: 1 | 2 | 3;
+  is_kbat: boolean;
+  marks: number;
+  image_url?: string;
+  status: UasaContentStatus;
+  choices: UasaChoice[];
+}
+
+export interface UasaAttempt {
+  id: string;
+  user_id: string;
+  module: UasaModule;
+  year: UasaYear;
+  subject_id: string;
+  chapter_id?: string | null;
+  status: 'in_progress' | 'completed' | 'abandoned';
+  total_questions: number;
+  total_marks?: number | null;
+  marks_bahagian_a?: number | null;
+  marks_bahagian_b?: number | null;
+  marks_bahagian_c?: number | null;
+  percent?: number | null;
+  percent_bahagian_a?: number | null;
+  percent_bahagian_b?: number | null;
+  percent_bahagian_c?: number | null;
+  started_at: string;
+  deadline_at?: string | null;
+  completed_at?: string | null;
+}
+
+export interface UasaAttemptAnswer {
+  id: string;
+  attempt_id: string;
+  question_id: string;
+  order_index: number;
+  bahagian: UasaBahagian;
+  marks: number;
+  selected_choice_id?: string | null;
+  is_correct?: boolean | null;
+  answered_at?: string | null;
+}

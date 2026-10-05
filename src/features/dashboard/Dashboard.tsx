@@ -16,6 +16,7 @@ import {
   Swords,
   Play,
   PenSquare,
+  GraduationCap,
 } from 'lucide-react';
 
 interface DashboardProps {
@@ -41,6 +42,7 @@ interface DashboardProps {
   onOpenArticulation?: () => void;
   onOpenPkskExam?: () => void;
   pkskExamSetReady?: boolean;
+  onOpenUasa?: () => void;
 }
 
 const ICON_MAP: Record<string, React.FC<{ className?: string }>> = {
@@ -123,13 +125,17 @@ export const Dashboard: React.FC<DashboardProps> = ({
   onOpenArticulation,
   onOpenPkskExam,
   pkskExamSetReady,
+  onOpenUasa,
 }) => {
   const [activeModuleTab, setActiveModuleTab] = React.useState<'sppim' | 'pksk' | 'uasa'>('sppim');
 
+  // PKSK deactivated temporarily per explicit instruction (2026-10-05) — code
+  // and data untouched, just not reachable from this tab bar for now. SPPIM
+  // and UASA are the two active modules.
   const hubModules = [
     { id: 'sppim', name: 'SPPIM', active: true },
-    { id: 'pksk', name: 'PKSK', active: true },
-    { id: 'uasa', name: 'UASA', active: false },
+    { id: 'uasa', name: 'UASA', active: true },
+    { id: 'pksk', name: 'PKSK', active: false },
   ];
 
   // Merge in-progress papers from both modules — sorted by most recent
@@ -297,8 +303,11 @@ export const Dashboard: React.FC<DashboardProps> = ({
 
         {/* Artikulasi Karangan (Bahagian C) has its own data fetching inside
             ArticulationScreen — it doesn't depend on subjects/papers/questions
-            loading below, so it stays reachable even if that content fails. */}
-        {activeModuleTab === 'pksk' && onOpenArticulation && (
+            loading below, so it stays reachable even if that content fails.
+            Gated on the module's active flag too — PKSK is deactivated for
+            now, so clicking its (still-visible, "Segera"-badged) tab must
+            not also surface these PKSK-only entry points. */}
+        {activeModuleTab === 'pksk' && hubModules.find((m) => m.id === 'pksk')?.active && onOpenArticulation && (
           <button
             onClick={() => {
               soundManager.playClick();
@@ -323,7 +332,7 @@ export const Dashboard: React.FC<DashboardProps> = ({
             PKSK_Structural_Revision.md). Only shown once an "PKSK Exam" set
             actually exists in the DB — Practice Mode below (per-subject
             cards) always works regardless. */}
-        {activeModuleTab === 'pksk' && onOpenPkskExam && pkskExamSetReady && (
+        {activeModuleTab === 'pksk' && hubModules.find((m) => m.id === 'pksk')?.active && onOpenPkskExam && pkskExamSetReady && (
           <button
             onClick={() => {
               soundManager.playClick();
@@ -359,30 +368,33 @@ export const Dashboard: React.FC<DashboardProps> = ({
           </div>
         ) : activeModuleTab === 'sppim' ? (
           <SubjectGrid subjects={subjects} papers={papers} onSelect={onSelectSubject} />
-        ) : activeModuleTab === 'pksk' ? (
-          <div className="space-y-4">
-            {pkskSubjects && pkskSubjects.length > 0 ? (
-              <SubjectGrid subjects={pkskSubjects} papers={pkskPapers} onSelect={onSelectSubject} />
-            ) : (
-              <div className="bg-cream-50 border border-sand-200 rounded-3xl p-6 text-center space-y-3 my-2">
-                <div className="w-12 h-12 rounded-2xl bg-cream-100 flex items-center justify-center mx-auto text-ink-500">
-                  <Lock className="w-6 h-6" />
-                </div>
-                <h3 className="text-base font-display font-bold text-ink-900">Bank Soalan Belum Sedia</h3>
-                <p className="text-xs text-ink-500 max-w-xs mx-auto">
-                  EduQuest sedang menyediakan bank soalan Bahagian A/B untuk modul PKSK. Artikulasi Karangan (Bahagian C) di atas sudah boleh diakses.
-                </p>
+        ) : activeModuleTab === 'uasa' ? (
+          <button
+            onClick={() => {
+              soundManager.playClick();
+              onOpenUasa?.();
+            }}
+            className="w-full text-left rounded-3xl bg-mist-100 hover:bg-mist-200/70 border border-mist-200 p-5 sm:p-6 flex items-center justify-between gap-4 transition-colors"
+          >
+            <div className="flex items-center gap-3.5 min-w-0">
+              <div className="w-12 h-12 rounded-2xl bg-cream-50 text-mist-600 shadow-sm flex items-center justify-center shrink-0">
+                <GraduationCap className="w-6 h-6" />
               </div>
-            )}
-          </div>
+              <div className="min-w-0">
+                <h2 className="text-sm sm:text-base font-display font-bold text-ink-900">Mula UASA</h2>
+                <p className="text-xs sm:text-sm text-ink-500">Pilih Tahun (3/5/6) → Subjek → Latihan atau Exam</p>
+              </div>
+            </div>
+            <ArrowRight className="w-5 h-5 text-mist-600 shrink-0" />
+          </button>
         ) : (
           <div className="bg-cream-50 border border-sand-200 rounded-3xl p-6 text-center space-y-3 my-2">
             <div className="w-12 h-12 rounded-2xl bg-cream-100 flex items-center justify-center mx-auto text-ink-500">
               <Lock className="w-6 h-6" />
             </div>
-            <h3 className="text-base font-display font-bold text-ink-900">Modul Akan Datang</h3>
+            <h3 className="text-base font-display font-bold text-ink-900">Modul PKSK Dinyahaktifkan Sementara</h3>
             <p className="text-xs text-ink-500 max-w-xs mx-auto">
-              EduQuest sedang menyediakan bank soalan untuk modul ini. Buat masa ini, sila teruskan dengan <strong className="text-ink-700">Modul SPPIM</strong>.
+              Modul PKSK sedang dinyahaktifkan buat sementara waktu (data & kod tidak disentuh). Buat masa ini, sila gunakan <strong className="text-ink-700">SPPIM</strong> atau <strong className="text-ink-700">UASA</strong>.
             </p>
             <button
               onClick={() => {
