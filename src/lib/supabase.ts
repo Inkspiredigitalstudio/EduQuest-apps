@@ -1456,11 +1456,13 @@ export async function bulkAddPkskQuestionsToSupabase(
 // which PKSK deliberately does not use — see plan doc #3c).
 
 // Bahagian A/B scoring style is data-driven, not name-matched: a question
-// whose choices carry `nilai_skala` is scored on the confirmed 1-4 weighted
-// scale (Bahagian A — Insaniah + Psikometrik, opinion/situational, no
-// is_correct), everything else falls back to the binary is_correct scheme
-// (Bahagian B). Same convention as savePkskMixedExamAttempt below.
-const PKSK_A_MAX_WEIGHT = 4;
+// whose choices carry `nilai_skala` is scored on the 1-5 Likert weighted
+// scale actually used by the content (verified against pksk_choices:
+// nilai_skala ranges 1-5, not 1-4) for Bahagian A — Insaniah + Psikometrik,
+// opinion/situational, no is_correct — everything else falls back to the
+// binary is_correct scheme (Bahagian B). Same convention as
+// savePkskMixedExamAttempt below.
+const PKSK_A_MAX_WEIGHT = 5;
 
 export async function savePkskAttempt(params: {
   user_id: string;
