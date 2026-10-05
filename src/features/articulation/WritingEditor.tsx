@@ -2,7 +2,7 @@ import React, { useEffect, useState } from 'react';
 import { ArticulationLevel, ArticulationMode, ArticulationQuestion, EssaySections } from '../../types';
 import { wordCount } from '../../lib/articulation';
 import { soundManager } from '../../lib/audio';
-import { ArrowLeft, Clock, Send, AlertTriangle } from 'lucide-react';
+import { Home, Clock, Send, AlertTriangle } from 'lucide-react';
 
 interface WritingEditorProps {
   question: ArticulationQuestion;
@@ -94,10 +94,10 @@ export const WritingEditor: React.FC<WritingEditorProps> = ({
     <div className="max-w-4xl mx-auto space-y-4 pb-12">
       <button
         onClick={handleCancel}
-        className="flex items-center gap-1.5 text-xs font-bold text-ink-500 hover:text-ink-700"
+        className="p-2.5 rounded-2xl bg-cream-100 hover:bg-cream-200 text-ink-700 border border-sand-200 transition-colors flex items-center gap-2 text-xs font-bold"
       >
-        <ArrowLeft className="w-4 h-4" />
-        <span>Kembali ke PKSK</span>
+        <Home className="w-4 h-4" />
+        <span>Kembali ke Menu Utama</span>
       </button>
 
       {mode === 'exam' && examEndTime && (

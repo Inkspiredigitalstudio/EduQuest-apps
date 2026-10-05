@@ -35,9 +35,59 @@ interface SubjectGridProps {
   subjects: Subject[];
   papers?: Paper[];
   onSelect: (subject: Subject) => void;
+  // 'list' = PKSK's centered list-button picker (less visually crowded for
+  // Bahagian B's 7 subjects than a card grid) — SPPIM keeps the card grid
+  // it's always had by leaving this unset.
+  layout?: 'grid' | 'list';
 }
 
-export const SubjectGrid: React.FC<SubjectGridProps> = ({ subjects, papers, onSelect }) => {
+export const SubjectGrid: React.FC<SubjectGridProps> = ({ subjects, papers, onSelect, layout = 'grid' }) => {
+  if (layout === 'list') {
+    return (
+      <div className="flex flex-col gap-2.5 max-w-lg mx-auto pt-1">
+        {subjects.map((sub) => {
+          const isLocked = sub.status === 'locked';
+          const paperCount = papers?.filter((p) => p.subject_id === sub.id).length || 0;
+
+          return (
+            <button
+              key={sub.id}
+              disabled={isLocked}
+              onClick={() => {
+                if (!isLocked) {
+                  soundManager.playClick();
+                  onSelect(sub);
+                }
+              }}
+              className={`w-full flex items-center justify-between gap-3 px-5 py-4 rounded-2xl border-2 font-bold transition-colors text-left ${
+                isLocked
+                  ? 'bg-cream-100 border-sand-200 opacity-60 cursor-not-allowed'
+                  : 'bg-grape-100 hover:bg-grape-200/70 border-grape-200 hover:border-grape-300 cursor-pointer'
+              }`}
+            >
+              <span className="text-base text-ink-900">{sub.name}</span>
+              <span className="flex items-center gap-2 shrink-0">
+                {isLocked ? (
+                  <span className="text-[10px] font-bold uppercase bg-cream-200 text-ink-500 px-2.5 py-1 rounded-full flex items-center gap-1">
+                    <Lock className="w-3 h-3" />
+                    Kunci
+                  </span>
+                ) : (
+                  <>
+                    <span className="text-[11px] text-grape-600 dark:text-grape-500 font-bold">
+                      {paperCount > 0 ? `${paperCount} Kertas` : 'Belum ada kertas'}
+                    </span>
+                    <ArrowRight className="w-4 h-4 text-grape-500" />
+                  </>
+                )}
+              </span>
+            </button>
+          );
+        })}
+      </div>
+    );
+  }
+
   return (
     <div className="grid grid-cols-1 md:grid-cols-3 gap-4 pt-1">
       {subjects.map((sub) => {
