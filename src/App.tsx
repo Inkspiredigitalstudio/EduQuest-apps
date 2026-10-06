@@ -775,6 +775,7 @@ export default function App() {
             explanationLabel="Penerangan:"
             showScratchpad={uasaSubject?.name.trim().toLowerCase() === 'matematik'}
             onRequestHint={uasaSubject?.name.trim().toLowerCase() === 'matematik' ? requestUasaHint : undefined}
+            inkyAnimation={inkyEquipped}
           />
         )}
 
@@ -859,6 +860,7 @@ export default function App() {
             onCompleteExam={activeModule === 'pksk' ? handleCompletePkskExam : handleCompleteExam}
             onCancel={() => setView('subject')}
             explanationLabel={activeModule === 'pksk' ? 'Penerangan:' : undefined}
+            inkyAnimation={inkyEquipped}
           />
         )}
 

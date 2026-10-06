@@ -1,9 +1,11 @@
-import React, { useState, useMemo, useRef } from 'react';
+import React, { useState, useMemo, useRef, useEffect } from 'react';
 import { Section, Question, Choice, UserProfile } from '../../types';
 import { soundManager } from '../../lib/audio';
 import { ArrowLeft, CheckCircle2, XCircle, Flame, Coins, Sparkles, ArrowRight, BookOpen, Trophy, Lightbulb } from 'lucide-react';
 import { ScratchPad } from '../uasa/ScratchPad';
 import { InkyThinking } from '../uasa/InkyThinking';
+import { InkyCheer } from '../inky/InkyCheer';
+import { INKY_ANIMATIONS, INKY_FREE_CHEERS } from '../inky/inkyAnimations';
 
 interface ExamScreenProps {
   // Optional because PKSK Exam Mode spans many sections at once — there is
@@ -22,7 +24,13 @@ interface ExamScreenProps {
   showScratchpad?: boolean;
   // When set, shows a "Minta Diajar" button that reveals one hint per press.
   onRequestHint?: (questionId: string, previousHints: string[]) => Promise<{ hint: string | null; done: boolean }>;
+  // Student's equipped Inky Shop animation — played on a correct answer
+  // instead of the free thumbs-up/happy cheer.
+  inkyAnimation?: string | null;
 }
+
+const CHEER_TEXTS = ['Betul! 👍', 'Hebat!', 'Bagus!', 'Pandai!', 'Syabas!'];
+const pick = <T,>(arr: readonly T[]): T => arr[Math.floor(Math.random() * arr.length)];
 
 function shuffleQuestionsChoices(questions: Question[]): Question[] {
   let consecutiveACount = 0;
@@ -84,6 +92,7 @@ export const ExamScreen: React.FC<ExamScreenProps> = ({
   mode = 'practice',
   showScratchpad = false,
   onRequestHint,
+  inkyAnimation,
 }) => {
   const questions = useMemo(() => shuffleQuestionsChoices(rawQuestions), [rawQuestions]);
 
@@ -106,6 +115,21 @@ export const ExamScreen: React.FC<ExamScreenProps> = ({
   const [hintError, setHintError] = useState<string | null>(null);
   // A slow hint must not land on the next question if the student moved on.
   const hintQuestionRef = useRef<string | null>(null);
+
+  const [cheer, setCheer] = useState<{ id: number; animation: string; text: string; durationMs: number } | null>(null);
+  const cheerTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  useEffect(() => () => {
+    if (cheerTimerRef.current) clearTimeout(cheerTimerRef.current);
+  }, []);
+
+  const showCheer = (newStreak: number) => {
+    const animation = inkyAnimation && INKY_ANIMATIONS[inkyAnimation] ? inkyAnimation : pick(INKY_FREE_CHEERS);
+    const text = newStreak >= 3 ? `🔥 ${newStreak} berturut!` : pick(CHEER_TEXTS);
+    const durationMs = Math.max(1900, INKY_ANIMATIONS[animation].durationMs + 500);
+    if (cheerTimerRef.current) clearTimeout(cheerTimerRef.current);
+    setCheer({ id: Date.now(), animation, text, durationMs });
+    cheerTimerRef.current = setTimeout(() => setCheer(null), durationMs);
+  };
 
   const currentQuestion = questions[currentIndex];
   const progressPercent = Math.round(((currentIndex + 1) / questions.length) * 100);
@@ -174,6 +198,7 @@ export const ExamScreen: React.FC<ExamScreenProps> = ({
       const coinReward = newStreak >= 3 ? 15 : 10;
       setCoinsEarned((c) => c + coinReward);
       soundManager.playCoin();
+      if (mode !== 'exam') showCheer(newStreak);
     } else {
       soundManager.playIncorrect();
       setStreak(0);
@@ -241,6 +266,8 @@ export const ExamScreen: React.FC<ExamScreenProps> = ({
 
   return (
     <div className={`${showScratchpad ? 'max-w-6xl' : 'max-w-3xl'} mx-auto space-y-6 pb-12`}>
+      {cheer && <InkyCheer key={cheer.id} animation={cheer.animation} text={cheer.text} durationMs={cheer.durationMs} />}
+
       {/* Top Header Bar */}
       <div className="bg-cream-50 border border-sand-200 rounded-3xl p-4 sm:p-5 flex items-center justify-between gap-4">
         <button

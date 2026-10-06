@@ -213,6 +213,24 @@ h1, h2, h3, .font-display {
   100% { transform: translateY(0) rotate(360deg) scale(1, 1); }
 }
 
+.inky-anim-hop { transform-origin: 50% 100%; animation: inky-hop 1s ease-out both; }
+@keyframes inky-hop {
+  0%, 100% { transform: translateY(0) scale(1, 1); }
+  20% { transform: translateY(0) scale(1.1, 0.88); }
+  45% { transform: translateY(-18%) scale(0.96, 1.06); }
+  70% { transform: translateY(0) scale(1.06, 0.94); }
+  85% { transform: translateY(-4%) scale(1, 1); }
+}
+
+/* Correct-answer cheer: pops in, holds, slides away. Never blocks taps. */
+.inky-cheer { animation: inky-cheer 1.9s ease-out both; }
+@keyframes inky-cheer {
+  0% { opacity: 0; transform: translateY(24px) scale(0.85); }
+  12% { opacity: 1; transform: translateY(0) scale(1.03); }
+  20%, 82% { opacity: 1; transform: translateY(0) scale(1); }
+  100% { opacity: 0; transform: translateY(16px) scale(0.95); }
+}
+
 .inky-fx {
   position: absolute;
   font-size: 1.5rem;
@@ -232,6 +250,9 @@ h1, h2, h3, .font-display {
 .inky-fx-c3 { --fx-x: -200%; --fx-y: -20%; animation-delay: 0.2s; }
 .inky-fx-c4 { --fx-x: 200%; --fx-y: -40%; animation-delay: 0.3s; }
 .inky-fx-dust { bottom: -4%; left: 38%; animation: inky-fx-dust 1.6s ease-out both; }
+.inky-fx-thumb { top: 30%; right: -14%; font-size: 1.75rem; animation: inky-fx-sparkle 1s ease-out 0.1s both; }
+.inky-fx-sparkle-l { top: 8%; left: -6%; animation: inky-fx-sparkle 1s ease-out both; }
+.inky-fx-sparkle-r { top: 0; right: -6%; animation: inky-fx-sparkle 1s ease-out 0.15s both; }
 
 @keyframes inky-fx-wave {
   0% { opacity: 0; transform: rotate(0); }

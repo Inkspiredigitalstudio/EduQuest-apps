@@ -51,4 +51,22 @@ export const INKY_ANIMATIONS: Record<string, InkyAnimation> = {
     durationMs: 1600,
     effects: [{ emoji: '💨', className: 'inky-fx-dust' }],
   },
+
+  // Free reactions for a correct answer (not sold in the shop — no row in
+  // inky_shop_items). Short on purpose: they fire after every right answer.
+  thumbs_up: {
+    bodyClass: 'inky-anim-hop',
+    durationMs: 1000,
+    effects: [{ emoji: '👍', className: 'inky-fx-thumb' }],
+  },
+  happy: {
+    bodyClass: 'inky-anim-hop',
+    durationMs: 1000,
+    effects: [
+      { emoji: '✨', className: 'inky-fx-sparkle-l' },
+      { emoji: '⭐', className: 'inky-fx-sparkle-r' },
+    ],
+  },
 };
+
+export const INKY_FREE_CHEERS = ['thumbs_up', 'happy'] as const;
