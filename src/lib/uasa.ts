@@ -46,7 +46,7 @@ export async function requestUasaHint(questionId: string, previousHints: string[
     body: JSON.stringify({ question_id: questionId, previous_hints: previousHints }),
   });
   const body = await res.json().catch(() => ({}));
-  if (!res.ok) throw new Error(body?.error || 'Petunjuk tidak dapat dijana. Sila cuba lagi.');
+  if (!res.ok) throw new Error(body?.error || 'Inky tak jumpa petunjuk kali ini. Cuba tekan sekali lagi.');
   return body as UasaHintResult;
 }
 

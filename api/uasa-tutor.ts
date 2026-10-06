@@ -115,7 +115,7 @@ async function nextHint(questionId: string, previousHints: string[]) {
       return { status: 200, body: { hint, done } };
     }
   }
-  return { status: 502, body: { error: 'Petunjuk tidak dapat dijana. Sila cuba lagi.' } };
+  return { status: 502, body: { error: 'Inky tak jumpa petunjuk kali ini. Cuba tekan sekali lagi.' } };
 }
 
 export default async function handler(req: any, res: any) {
@@ -155,6 +155,6 @@ export default async function handler(req: any, res: any) {
     res.status(result.status).json(result.body);
   } catch (e) {
     console.error('uasa-tutor error:', e);
-    res.status(502).json({ error: 'AI tidak dapat dihubungi buat masa ini. Sila cuba lagi.' });
+    res.status(502).json({ error: 'Inky tidak dapat dihubungi buat masa ini. Sila cuba lagi.' });
   }
 }

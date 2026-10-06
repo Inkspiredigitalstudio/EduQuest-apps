@@ -144,6 +144,46 @@ h1, h2, h3, .font-display {
   scrollbar-width: none;
 }
 
+/* Inky mascot (Minta Petunjuk loading state) — slow, gentle loops only */
+@keyframes inky-bob {
+  0%, 100% { transform: translateY(0); }
+  50% { transform: translateY(-3px); }
+}
+@keyframes inky-wiggle {
+  0%, 100% { transform: rotate(-6deg); }
+  50% { transform: rotate(6deg); }
+}
+@keyframes inky-blink {
+  0%, 92%, 100% { transform: scaleY(1); }
+  95% { transform: scaleY(0.1); }
+}
+@keyframes inky-bulb {
+  0%, 100% { transform: scale(0.85) rotate(-8deg); opacity: 0.7; }
+  50% { transform: scale(1.1) rotate(8deg); opacity: 1; }
+}
+@keyframes inky-dot {
+  0%, 80%, 100% { transform: translateY(0); opacity: 0.4; }
+  40% { transform: translateY(-4px); opacity: 1; }
+}
+@keyframes inky-pop {
+  from { opacity: 0; transform: translateY(6px) scale(0.98); }
+  to { opacity: 1; transform: none; }
+}
+.inky-bob { animation: inky-bob 2.4s ease-in-out infinite; }
+.inky-tentacle {
+  transform-box: fill-box;
+  transform-origin: top center;
+  animation: inky-wiggle 1.6s ease-in-out infinite;
+}
+.inky-blink {
+  transform-box: fill-box;
+  transform-origin: center;
+  animation: inky-blink 3.2s ease-in-out infinite;
+}
+.inky-bulb { display: inline-block; animation: inky-bulb 1.8s ease-in-out infinite; }
+.inky-dot { animation: inky-dot 1.2s ease-in-out infinite; }
+.inky-pop { animation: inky-pop 0.35s ease-out both; }
+
 /* Respect motion preferences — important for ADHD-friendly, low-distraction UI */
 @media (prefers-reduced-motion: reduce) {
   *, *::before, *::after {

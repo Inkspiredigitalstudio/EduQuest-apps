@@ -1,8 +1,9 @@
 import React, { useState, useMemo, useRef } from 'react';
 import { Section, Question, Choice, UserProfile } from '../../types';
 import { soundManager } from '../../lib/audio';
-import { ArrowLeft, CheckCircle2, XCircle, Flame, Coins, Sparkles, ArrowRight, BookOpen, Trophy, Lightbulb, LoaderCircle } from 'lucide-react';
+import { ArrowLeft, CheckCircle2, XCircle, Flame, Coins, Sparkles, ArrowRight, BookOpen, Trophy, Lightbulb } from 'lucide-react';
 import { ScratchPad } from '../uasa/ScratchPad';
+import { InkyThinking } from '../uasa/InkyThinking';
 
 interface ExamScreenProps {
   // Optional because PKSK Exam Mode spans many sections at once — there is
@@ -227,7 +228,7 @@ export const ExamScreen: React.FC<ExamScreenProps> = ({
       if (result.hint) setHints((prev) => [...prev, result.hint as string]);
       if (result.done || !result.hint) setHintsDone(true);
     } catch (e) {
-      if (hintQuestionRef.current === qid) setHintError(e instanceof Error ? e.message : 'Petunjuk tidak dapat dijana. Sila cuba lagi.');
+      if (hintQuestionRef.current === qid) setHintError(e instanceof Error ? e.message : 'Inky tak jumpa petunjuk kali ini. Cuba tekan sekali lagi.');
     } finally {
       if (hintQuestionRef.current === qid) setHintLoading(false);
     }
@@ -301,7 +302,7 @@ export const ExamScreen: React.FC<ExamScreenProps> = ({
           {onRequestHint && (hints.length > 0 || !isAnswered) && (
             <div className="space-y-2 pt-2">
               {hints.map((h, i) => (
-                <div key={i} className="flex items-start gap-2.5 p-3 rounded-2xl bg-honey-100 border border-honey-200 text-sm text-ink-900 leading-relaxed">
+                <div key={i} className="inky-pop flex items-start gap-2.5 p-3 rounded-2xl bg-honey-100 border border-honey-200 text-sm text-ink-900 leading-relaxed">
                   <Lightbulb className="w-4 h-4 text-honey-500 shrink-0 mt-0.5" />
                   <span>
                     <span className="font-bold">Langkah {i + 1}: </span>
@@ -311,17 +312,18 @@ export const ExamScreen: React.FC<ExamScreenProps> = ({
               ))}
               {hintError && <p className="text-xs font-bold text-clay-500">{hintError}</p>}
               {!isAnswered &&
-                (hintsDone ? (
+                (hintLoading ? (
+                  <InkyThinking />
+                ) : hintsDone ? (
                   <p className="text-xs font-bold text-ink-500">Itu sahaja petunjuk. Cuba kira dan pilih jawapan anda!</p>
                 ) : (
                   <button
                     type="button"
                     onClick={handleRequestHint}
-                    disabled={hintLoading}
-                    className="flex items-center gap-2 px-4 py-2.5 rounded-2xl text-sm font-bold border-2 border-honey-200 bg-honey-100 text-ink-900 hover:bg-honey-200/70 disabled:opacity-60 transition-colors"
+                    className="flex items-center gap-2 px-4 py-2.5 rounded-2xl text-sm font-bold border-2 border-honey-200 bg-honey-100 text-ink-900 hover:bg-honey-200/70 transition-colors"
                   >
-                    {hintLoading ? <LoaderCircle className="w-4 h-4 animate-spin" /> : <Lightbulb className="w-4 h-4 text-honey-500" />}
-                    <span>{hintLoading ? 'Sedang berfikir...' : hints.length ? 'Langkah Seterusnya' : 'Minta Diajar'}</span>
+                    <span aria-hidden="true">💡</span>
+                    <span>{hints.length ? 'Petunjuk Seterusnya' : 'Petunjuk'}</span>
                   </button>
                 ))}
             </div>
