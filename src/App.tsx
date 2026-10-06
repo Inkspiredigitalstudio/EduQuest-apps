@@ -739,6 +739,7 @@ export default function App() {
             onCompleteExam={handleCompleteUasaPractice}
             onCancel={() => setView('uasa-entry')}
             explanationLabel="Penerangan:"
+            showScratchpad={uasaSubject?.name.trim().toLowerCase() === 'matematik'}
           />
         )}
 

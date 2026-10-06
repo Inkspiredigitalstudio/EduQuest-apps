@@ -2,6 +2,7 @@ import React, { useState, useMemo } from 'react';
 import { Section, Question, Choice, UserProfile } from '../../types';
 import { soundManager } from '../../lib/audio';
 import { ArrowLeft, CheckCircle2, XCircle, Flame, Coins, Sparkles, ArrowRight, BookOpen, Trophy } from 'lucide-react';
+import { ScratchPad } from '../uasa/ScratchPad';
 
 interface ExamScreenProps {
   // Optional because PKSK Exam Mode spans many sections at once — there is
@@ -17,6 +18,7 @@ interface ExamScreenProps {
   // students can't infer Bahagian A vs B from the label. 'practice' (default)
   // keeps today's behaviour: student already picked this section themselves.
   mode?: 'practice' | 'exam';
+  showScratchpad?: boolean;
 }
 
 function shuffleQuestionsChoices(questions: Question[]): Question[] {
@@ -77,6 +79,7 @@ export const ExamScreen: React.FC<ExamScreenProps> = ({
   onCancel,
   explanationLabel = 'Penerangan Hukum & Dalil:',
   mode = 'practice',
+  showScratchpad = false,
 }) => {
   const questions = useMemo(() => shuffleQuestionsChoices(rawQuestions), [rawQuestions]);
 
@@ -197,8 +200,13 @@ export const ExamScreen: React.FC<ExamScreenProps> = ({
 
   const selectedChoice = currentQuestion.choices.find((c) => c.id === selectedChoiceId);
 
+  // With the scratchpad, the question and the answers become separate cards so
+  // the pad sits between them on phones (read → work it out → answer) and in a
+  // sticky right-hand column on landscape tablets.
+  const cardClass = 'bg-cream-50 border border-sand-200 rounded-3xl p-6 sm:p-8';
+
   return (
-    <div className="max-w-3xl mx-auto space-y-6 pb-12">
+    <div className={`${showScratchpad ? 'max-w-6xl' : 'max-w-3xl'} mx-auto space-y-6 pb-12`}>
       {/* Top Header Bar */}
       <div className="bg-cream-50 border border-sand-200 rounded-3xl p-4 sm:p-5 flex items-center justify-between gap-4">
         <button
@@ -236,8 +244,8 @@ export const ExamScreen: React.FC<ExamScreenProps> = ({
       </div>
 
       {/* Main Question Card */}
-      <div className="bg-cream-50 border border-sand-200 rounded-3xl p-6 sm:p-8 space-y-6">
-        <div className="space-y-3">
+      <div className={showScratchpad ? 'grid gap-4 lg:gap-6 lg:grid-cols-2 lg:grid-rows-[auto_1fr] lg:items-start' : `${cardClass} space-y-6`}>
+        <div className={showScratchpad ? `${cardClass} space-y-3 lg:col-start-1 lg:row-start-1` : 'space-y-3'}>
           <div className="flex items-center justify-between text-xs font-bold text-ink-500">
             <span className="uppercase tracking-wide text-mist-600 bg-mist-100 px-2.5 py-1 rounded-lg">
               {mode === 'exam' || !section
@@ -258,6 +266,13 @@ export const ExamScreen: React.FC<ExamScreenProps> = ({
           )}
         </div>
 
+        {showScratchpad && (
+          <div className="lg:col-start-2 lg:row-start-1 lg:row-span-2 lg:sticky lg:top-4">
+            <ScratchPad questionId={currentQuestion.id} />
+          </div>
+        )}
+
+        <div className={showScratchpad ? `${cardClass} space-y-6 lg:col-start-1 lg:row-start-2` : 'space-y-6'}>
         <div className="space-y-3 pt-2">
           {currentQuestion.choices.map((choice, idx) => {
             const isSelected = choice.id === selectedChoiceId;
@@ -349,6 +364,7 @@ export const ExamScreen: React.FC<ExamScreenProps> = ({
             </button>
           </div>
         )}
+        </div>
       </div>
     </div>
   );
