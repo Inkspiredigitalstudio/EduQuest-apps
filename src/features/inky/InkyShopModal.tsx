@@ -14,6 +14,8 @@ import {
 
 type Tab = 'shop' | 'mine';
 
+const fmt = (n: number) => n.toLocaleString('en-US');
+
 interface InkyShopModalProps {
   isOpen: boolean;
   initialTab?: Tab;
@@ -126,7 +128,7 @@ export const InkyShopModal: React.FC<InkyShopModalProps> = ({ isOpen, initialTab
           <div className="flex items-center gap-2">
             <div className="flex items-center gap-1 bg-honey-100 text-honey-500 px-3 py-1 rounded-xl font-bold text-sm">
               <Coins className="w-4 h-4" />
-              <span>{state ? coin : '…'}</span>
+              <span>{state ? fmt(coin) : '…'}</span>
             </div>
             <button
               onClick={onClose}
@@ -229,7 +231,7 @@ export const InkyShopModal: React.FC<InkyShopModalProps> = ({ isOpen, initialTab
                         <span className="block text-sm font-bold text-ink-900 truncate">{item.name}</span>
                         <span className="flex items-center gap-1 text-xs font-bold text-honey-500">
                           <Coins className="w-3.5 h-3.5" />
-                          {item.price} Coins
+                          {fmt(item.price)} Coins
                         </span>
                       </span>
                     </button>
@@ -247,7 +249,11 @@ export const InkyShopModal: React.FC<InkyShopModalProps> = ({ isOpen, initialTab
                         >
                           {busyId === item.id ? '…' : 'Unlock'}
                         </button>
-                        {!canAfford && <span className="text-[10px] font-bold text-clay-500">Coin tak cukup</span>}
+                        {!canAfford && (
+                          <span className="text-[10px] font-bold text-clay-500 whitespace-nowrap">
+                            Kurang {fmt(item.price - coin)} Coin
+                          </span>
+                        )}
                       </div>
                     )}
                   </li>
