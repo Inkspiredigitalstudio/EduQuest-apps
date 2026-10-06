@@ -231,6 +231,51 @@ h1, h2, h3, .font-display {
   100% { opacity: 0; transform: translateY(16px) scale(0.95); }
 }
 
+/* Accessories (src/features/inky/inkyAccessories.ts). The avatar box is a
+   size container so emoji accessories scale with it (font-size in cqw). */
+.inky-avatar { container-type: size; }
+.inky-accessory {
+  position: absolute;
+  transform: translate(-50%, -50%);
+  line-height: 1;
+  pointer-events: none;
+}
+.inky-aura {
+  position: absolute;
+  inset: 4%;
+  border-radius: 9999px;
+  pointer-events: none;
+}
+.inky-aura-rainbow {
+  background: conic-gradient(from 0deg, #ff6b6b, #ffd93d, #6bcb77, #4d96ff, #9b5de5, #ff6b6b);
+  opacity: 0.6;
+  filter: blur(4px);
+  animation: inky-aura-spin 12s linear infinite;
+}
+.inky-aura-stars {
+  inset: -6%;
+  background: radial-gradient(circle, rgba(255, 214, 90, 0.6) 0%, rgba(255, 214, 90, 0.25) 45%, rgba(255, 214, 90, 0) 68%);
+  animation: inky-aura-pulse 2.4s ease-in-out infinite;
+}
+/* Two sparkles orbiting the glow in opposite directions. */
+.inky-aura-stars::before, .inky-aura-stars::after {
+  content: '✦';
+  position: absolute;
+  inset: 0;
+  display: flex;
+  justify-content: center;
+  color: #f5b301;
+  line-height: 1;
+  animation: inky-aura-spin 6s linear infinite;
+}
+.inky-aura-stars::before { align-items: flex-start; font-size: 16cqw; }
+.inky-aura-stars::after { align-items: flex-end; font-size: 11cqw; animation-direction: reverse; animation-duration: 8s; }
+@keyframes inky-aura-pulse {
+  0%, 100% { opacity: 0.75; transform: scale(0.96); }
+  50% { opacity: 1; transform: scale(1.04); }
+}
+@keyframes inky-aura-spin { to { transform: rotate(360deg); } }
+
 .inky-fx {
   position: absolute;
   font-size: 1.5rem;

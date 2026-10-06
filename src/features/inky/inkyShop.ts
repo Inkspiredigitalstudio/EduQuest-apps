@@ -9,18 +9,21 @@ export interface InkyShopItem {
   name: string;
   emoji: string;
   price: number;
+  kind: 'animation' | 'accessory';
+  slot: 'head' | 'face' | 'chest' | 'aura' | null;
 }
 
 export interface InkyState {
   coin: number;
   owned: string[];
   equipped: string | null;
+  accessories: string[];
 }
 
 const ERROR_MESSAGES: Record<string, string> = {
   insufficient_coins: 'Coin tak cukup',
-  already_owned: 'Animasi ini sudah dibeli',
-  not_owned: 'Beli animasi ini dahulu',
+  already_owned: 'Item ini sudah dibeli',
+  not_owned: 'Beli item ini dahulu',
   item_not_found: 'Item ini tiada lagi di kedai',
   not_authenticated: 'Sesi tamat. Sila log keluar dan log masuk semula.',
   user_not_found: 'Akaun tidak dijumpai. Sila log masuk semula.',
@@ -51,7 +54,7 @@ async function callRpc(fn: string, args?: Record<string, unknown>): Promise<any>
 export async function fetchInkyShopItems(): Promise<InkyShopItem[]> {
   const { data, error } = await client()
     .from('inky_shop_items')
-    .select('id, name, emoji, price')
+    .select('id, name, emoji, price, kind, slot')
     .eq('active', true)
     .order('sort_order');
   if (error) throw new InkyShopError('network');
@@ -60,7 +63,7 @@ export async function fetchInkyShopItems(): Promise<InkyShopItem[]> {
 
 export async function fetchInkyState(): Promise<InkyState> {
   const data = await callRpc('inky_state');
-  return { coin: data.coin, owned: data.owned || [], equipped: data.equipped ?? null };
+  return { coin: data.coin, owned: data.owned || [], equipped: data.equipped ?? null, accessories: data.accessories || [] };
 }
 
 export async function purchaseInkyItem(itemId: string): Promise<{ coin: number }> {
@@ -70,4 +73,11 @@ export async function purchaseInkyItem(itemId: string): Promise<{ coin: number }
 
 export async function equipInkyItem(itemId: string | null): Promise<void> {
   await callRpc('inky_equip', { p_item: itemId });
+}
+
+// Put an accessory on (replacing whatever is in its slot) or take it off.
+// Returns everything Inky is wearing afterwards.
+export async function wearInkyAccessory(itemId: string, on: boolean): Promise<string[]> {
+  const data = await callRpc('inky_wear', { p_item: itemId, p_on: on });
+  return data.accessories || [];
 }

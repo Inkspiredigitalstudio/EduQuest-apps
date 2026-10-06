@@ -2,6 +2,7 @@ import React, { useEffect, useState } from 'react';
 import { X, Coins, Check, ShoppingBag, Star } from 'lucide-react';
 import { soundManager } from '../../lib/audio';
 import { InkyAvatar } from './InkyAvatar';
+import { wearInSlot } from './inkyAccessories';
 import {
   InkyShopItem,
   InkyState,
@@ -10,11 +11,13 @@ import {
   fetchInkyState,
   purchaseInkyItem,
   equipInkyItem,
+  wearInkyAccessory,
 } from './inkyShop';
 
 type Tab = 'shop' | 'mine';
 
 const fmt = (n: number) => n.toLocaleString('en-US');
+const errorText = (e: unknown) => (e instanceof InkyShopError ? e.message : 'Tak dapat sambung. Cuba lagi.');
 
 interface InkyShopModalProps {
   isOpen: boolean;
@@ -23,9 +26,17 @@ interface InkyShopModalProps {
   // Server is the source of truth for coins; keep the header/profile in step.
   onCoinChange: (coin: number) => void;
   onEquippedChange: (itemId: string | null) => void;
+  onAccessoriesChange: (worn: string[]) => void;
 }
 
-export const InkyShopModal: React.FC<InkyShopModalProps> = ({ isOpen, initialTab = 'shop', onClose, onCoinChange, onEquippedChange }) => {
+export const InkyShopModal: React.FC<InkyShopModalProps> = ({
+  isOpen,
+  initialTab = 'shop',
+  onClose,
+  onCoinChange,
+  onEquippedChange,
+  onAccessoriesChange,
+}) => {
   const [tab, setTab] = useState<Tab>(initialTab);
   const [items, setItems] = useState<InkyShopItem[]>([]);
   const [state, setState] = useState<InkyState | null>(null);
@@ -33,12 +44,15 @@ export const InkyShopModal: React.FC<InkyShopModalProps> = ({ isOpen, initialTab
   const [loadError, setLoadError] = useState('');
   const [busyId, setBusyId] = useState<string | null>(null);
   const [message, setMessage] = useState<{ text: string; tone: 'good' | 'bad' } | null>(null);
-  // Which animation the big Inky is showing, and a counter to replay it.
+  // What the big Inky shows: an animation (replayed via playToken) and, in
+  // the shop, an accessory being tried on before buying.
   const [preview, setPreview] = useState<string | null>(null);
+  const [tryOn, setTryOn] = useState<string | null>(null);
   const [playToken, setPlayToken] = useState(0);
 
   const play = (id: string | null) => {
     setPreview(id);
+    setTryOn(null);
     setPlayToken((t) => t + 1);
   };
 
@@ -51,9 +65,10 @@ export const InkyShopModal: React.FC<InkyShopModalProps> = ({ isOpen, initialTab
       setState(inkyState);
       onCoinChange(inkyState.coin);
       onEquippedChange(inkyState.equipped);
+      onAccessoriesChange(inkyState.accessories);
       play(inkyState.equipped);
     } catch (e) {
-      setLoadError(e instanceof InkyShopError ? e.message : 'Tak dapat sambung. Cuba lagi.');
+      setLoadError(errorText(e));
     } finally {
       setLoading(false);
     }
@@ -71,7 +86,24 @@ export const InkyShopModal: React.FC<InkyShopModalProps> = ({ isOpen, initialTab
 
   const owned = new Set(state?.owned || []);
   const coin = state?.coin ?? 0;
+  const worn = state?.accessories || [];
+  const animations = items.filter((i) => i.kind === 'animation');
+  const accessories = items.filter((i) => i.kind === 'accessory');
   const itemById = (id: string | null) => items.find((i) => i.id === id);
+
+  const handlePreview = (item: InkyShopItem) => {
+    if (item.kind === 'animation') {
+      play(item.id);
+    } else {
+      setPreview(null);
+      setTryOn(item.id);
+    }
+  };
+
+  const setWorn = (next: string[]) => {
+    setState((s) => (s ? { ...s, accessories: next } : s));
+    onAccessoriesChange(next);
+  };
 
   const handleBuy = async (item: InkyShopItem) => {
     if (!state || busyId) return;
@@ -79,14 +111,29 @@ export const InkyShopModal: React.FC<InkyShopModalProps> = ({ isOpen, initialTab
     setMessage(null);
     try {
       const { coin: newCoin } = await purchaseInkyItem(item.id);
-      setState({ ...state, coin: newCoin, owned: [...state.owned, item.id] });
+      setState((s) => (s ? { ...s, coin: newCoin, owned: [...s.owned, item.id] } : s));
       onCoinChange(newCoin);
       soundManager.playLevelUp();
-      play(item.id);
-      setMessage({ text: `${item.emoji} ${item.name} dibuka! Pergi ke My Inky untuk Equip.`, tone: 'good' });
+      if (item.kind === 'accessory') {
+        // Put it straight on — that's what they just bought it for.
+        try {
+          setWorn(await wearInkyAccessory(item.id, true));
+          setTryOn(null);
+          setPlayToken((t) => t + 1);
+          setPreview('happy');
+          setMessage({ text: `${item.emoji} ${item.name} dibuka dan dipakai!`, tone: 'good' });
+        } catch {
+          setMessage({ text: `${item.emoji} ${item.name} dibuka! Pakai di My Inky.`, tone: 'good' });
+        }
+      } else {
+        play(item.id);
+        setMessage({ text: `${item.emoji} ${item.name} dibuka! Pergi ke My Inky untuk Equip.`, tone: 'good' });
+      }
     } catch (e) {
       const err = e instanceof InkyShopError ? e : new InkyShopError('network');
-      if (err.code === 'already_owned') setState({ ...state, owned: [...new Set([...state.owned, item.id])] });
+      if (err.code === 'already_owned') {
+        setState((s) => (s ? { ...s, owned: [...new Set([...s.owned, item.id])] } : s));
+      }
       if (typeof err.coin === 'number') {
         setState((s) => (s ? { ...s, coin: err.coin as number } : s));
         onCoinChange(err.coin);
@@ -104,13 +151,30 @@ export const InkyShopModal: React.FC<InkyShopModalProps> = ({ isOpen, initialTab
     setMessage(null);
     try {
       await equipInkyItem(itemId);
-      setState({ ...state, equipped: itemId });
+      setState((s) => (s ? { ...s, equipped: itemId } : s));
       onEquippedChange(itemId);
       soundManager.playCoin();
       play(itemId);
     } catch (e) {
       soundManager.playIncorrect();
-      setMessage({ text: e instanceof InkyShopError ? e.message : 'Tak dapat sambung. Cuba lagi.', tone: 'bad' });
+      setMessage({ text: errorText(e), tone: 'bad' });
+    } finally {
+      setBusyId(null);
+    }
+  };
+
+  const handleToggleWear = async (item: InkyShopItem) => {
+    if (!state || busyId) return;
+    const on = !worn.includes(item.id);
+    setBusyId(item.id);
+    setMessage(null);
+    try {
+      setWorn(await wearInkyAccessory(item.id, on));
+      soundManager.playClick();
+      if (on) play('happy');
+    } catch (e) {
+      soundManager.playIncorrect();
+      setMessage({ text: errorText(e), tone: 'bad' });
     } finally {
       setBusyId(null);
     }
@@ -118,6 +182,88 @@ export const InkyShopModal: React.FC<InkyShopModalProps> = ({ isOpen, initialTab
 
   const equippedItem = itemById(state?.equipped ?? null);
   const previewItem = itemById(preview);
+  const tryOnItem = itemById(tryOn);
+  const stageAccessories = tryOn ? wearInSlot(worn, tryOn) : worn;
+
+  const sectionTitle = (text: string) => (
+    <h3 className="text-xs font-bold text-ink-500 uppercase tracking-wide">{text}</h3>
+  );
+
+  const shopRow = (item: InkyShopItem) => {
+    const isOwned = owned.has(item.id);
+    const canAfford = coin >= item.price;
+    return (
+      <li
+        key={item.id}
+        className={`flex items-center gap-3 p-3 rounded-2xl border ${
+          isOwned ? 'bg-sage-100/60 border-sage-200' : 'bg-cream-100 border-sand-200'
+        }`}
+      >
+        <button
+          onClick={() => handlePreview(item)}
+          className="flex items-center gap-3 flex-1 min-w-0 text-left"
+          aria-label={`Pratonton ${item.name}`}
+        >
+          <span className="text-2xl w-10 h-10 shrink-0 rounded-xl bg-cream-50 flex items-center justify-center" aria-hidden="true">
+            {item.emoji}
+          </span>
+          <span className="min-w-0">
+            <span className="block text-sm font-bold text-ink-900 truncate">{item.name}</span>
+            <span className="flex items-center gap-1 text-xs font-bold text-honey-500">
+              <Coins className="w-3.5 h-3.5" />
+              {fmt(item.price)} Coins
+            </span>
+          </span>
+        </button>
+        {isOwned ? (
+          <span className="shrink-0 flex items-center gap-1 px-3 py-2 rounded-xl bg-sage-100 text-sage-600 text-xs font-bold">
+            <Check className="w-4 h-4" />
+            Unlocked
+          </span>
+        ) : (
+          <div className="shrink-0 flex flex-col items-end gap-0.5">
+            <button
+              onClick={() => handleBuy(item)}
+              disabled={!canAfford || busyId !== null}
+              className="px-4 py-2 rounded-xl text-xs font-bold transition-colors bg-mist-500 hover:bg-mist-600 text-white disabled:bg-sand-200 disabled:text-ink-500 disabled:cursor-not-allowed"
+            >
+              {busyId === item.id ? '…' : 'Unlock'}
+            </button>
+            {!canAfford && (
+              <span className="text-[10px] font-bold text-clay-500 whitespace-nowrap">Kurang {fmt(item.price - coin)} Coin</span>
+            )}
+          </div>
+        )}
+      </li>
+    );
+  };
+
+  const tile = (item: InkyShopItem, opts: { selected: boolean; badge: boolean; onClick: () => void }) => {
+    const isOwned = owned.has(item.id);
+    return (
+      <button
+        key={item.id}
+        onClick={opts.onClick}
+        disabled={busyId !== null}
+        className={`relative flex flex-col items-center gap-1 p-2.5 rounded-2xl border-2 text-center transition-colors ${
+          opts.selected ? 'border-mist-500 bg-mist-100' : 'border-sand-200 bg-cream-100'
+        } ${isOwned ? '' : 'opacity-60'}`}
+      >
+        <span className="text-2xl" aria-hidden="true">{isOwned ? item.emoji : '🔒'}</span>
+        <span className="text-[11px] font-bold text-ink-900 leading-tight">{item.name}</span>
+        {opts.badge && (
+          <span className="absolute -top-1.5 -right-1.5 w-5 h-5 rounded-full bg-sage-500 text-white flex items-center justify-center">
+            <Check className="w-3 h-3" />
+          </span>
+        )}
+      </button>
+    );
+  };
+
+  const goShopFor = (item: InkyShopItem) => {
+    setTab('shop');
+    handlePreview(item);
+  };
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 backdrop-blur-sm p-4 overflow-y-auto">
@@ -165,13 +311,19 @@ export const InkyShopModal: React.FC<InkyShopModalProps> = ({ isOpen, initialTab
         </div>
 
         <div className="p-4 sm:p-5 overflow-y-auto flex-1 space-y-4">
-          {/* Inky stage — tap to replay */}
+          {/* Inky stage — pinned while the list scrolls, tap to replay */}
           <button
-            onClick={() => play(preview)}
-            className="w-full flex flex-col items-center gap-1 pt-12"
+            onClick={() => (tryOn ? setPlayToken((t) => t + 1) : play(preview))}
+            className="sticky -top-4 sm:-top-5 z-10 -mx-4 sm:-mx-5 -mt-4 sm:-mt-5 w-[calc(100%+2rem)] sm:w-[calc(100%+2.5rem)] flex flex-col items-center gap-1 pt-12 pb-2 bg-cream-50 border-b border-sand-200"
             aria-label="Main semula animasi"
           >
-            <InkyAvatar animation={preview} playToken={playToken} idle className="w-32 h-32 sm:w-36 sm:h-36" />
+            <InkyAvatar
+              animation={preview}
+              playToken={playToken}
+              idle
+              accessories={stageAccessories}
+              className="w-28 h-28 sm:w-32 sm:h-32"
+            />
             {tab === 'mine' && (
               <span className="text-xs text-ink-500">
                 Animasi semasa:{' '}
@@ -180,9 +332,12 @@ export const InkyShopModal: React.FC<InkyShopModalProps> = ({ isOpen, initialTab
                 </span>
               </span>
             )}
-            {tab === 'shop' && previewItem && (
+            {tab === 'shop' && (tryOnItem || previewItem) && (
               <span className="text-xs text-ink-500">
-                Pratonton: <span className="font-bold text-ink-900">{previewItem.emoji} {previewItem.name}</span>
+                {tryOnItem ? 'Cuba pakai: ' : 'Pratonton: '}
+                <span className="font-bold text-ink-900">
+                  {(tryOnItem || previewItem)!.emoji} {(tryOnItem || previewItem)!.name}
+                </span>
               </span>
             )}
           </button>
@@ -208,105 +363,70 @@ export const InkyShopModal: React.FC<InkyShopModalProps> = ({ isOpen, initialTab
               </button>
             </div>
           ) : tab === 'shop' ? (
-            <ul className="space-y-2.5">
-              {items.map((item) => {
-                const isOwned = owned.has(item.id);
-                const canAfford = coin >= item.price;
-                return (
-                  <li
-                    key={item.id}
-                    className={`flex items-center gap-3 p-3 rounded-2xl border ${
-                      isOwned ? 'bg-sage-100/60 border-sage-200' : 'bg-cream-100 border-sand-200'
-                    }`}
-                  >
-                    <button
-                      onClick={() => play(item.id)}
-                      className="flex items-center gap-3 flex-1 min-w-0 text-left"
-                      aria-label={`Pratonton ${item.name}`}
-                    >
-                      <span className="text-2xl w-10 h-10 shrink-0 rounded-xl bg-cream-50 flex items-center justify-center" aria-hidden="true">
-                        {item.emoji}
-                      </span>
-                      <span className="min-w-0">
-                        <span className="block text-sm font-bold text-ink-900 truncate">{item.name}</span>
-                        <span className="flex items-center gap-1 text-xs font-bold text-honey-500">
-                          <Coins className="w-3.5 h-3.5" />
-                          {fmt(item.price)} Coins
-                        </span>
-                      </span>
-                    </button>
-                    {isOwned ? (
-                      <span className="shrink-0 flex items-center gap-1 px-3 py-2 rounded-xl bg-sage-100 text-sage-600 text-xs font-bold">
-                        <Check className="w-4 h-4" />
-                        Unlocked
-                      </span>
-                    ) : (
-                      <div className="shrink-0 flex flex-col items-end gap-0.5">
-                        <button
-                          onClick={() => handleBuy(item)}
-                          disabled={!canAfford || busyId !== null}
-                          className="px-4 py-2 rounded-xl text-xs font-bold transition-colors bg-mist-500 hover:bg-mist-600 text-white disabled:bg-sand-200 disabled:text-ink-500 disabled:cursor-not-allowed"
-                        >
-                          {busyId === item.id ? '…' : 'Unlock'}
-                        </button>
-                        {!canAfford && (
-                          <span className="text-[10px] font-bold text-clay-500 whitespace-nowrap">
-                            Kurang {fmt(item.price - coin)} Coin
-                          </span>
-                        )}
-                      </div>
-                    )}
-                  </li>
-                );
-              })}
-            </ul>
+            <div className="space-y-5">
+              <section className="space-y-2.5">
+                {sectionTitle('🎬 Animasi')}
+                <ul className="space-y-2.5">{animations.map(shopRow)}</ul>
+              </section>
+              {accessories.length > 0 && (
+                <section className="space-y-2.5">
+                  {sectionTitle('🎩 Aksesori')}
+                  <p className="text-[11px] text-ink-500">Tekan untuk cuba pakai sebelum beli.</p>
+                  <ul className="space-y-2.5">{accessories.map(shopRow)}</ul>
+                </section>
+              )}
+            </div>
           ) : (
-            <div className="space-y-3">
-              <div className="grid grid-cols-3 gap-2">
-                {items.map((item) => {
-                  const isOwned = owned.has(item.id);
-                  const isEquipped = state?.equipped === item.id;
-                  const isSelected = preview === item.id;
-                  return (
-                    <button
-                      key={item.id}
-                      onClick={() => (isOwned ? play(item.id) : (setTab('shop'), play(item.id)))}
-                      className={`relative flex flex-col items-center gap-1 p-2.5 rounded-2xl border-2 text-center transition-colors ${
-                        isSelected ? 'border-mist-500 bg-mist-100' : 'border-sand-200 bg-cream-100'
-                      } ${isOwned ? '' : 'opacity-60'}`}
-                    >
-                      <span className="text-2xl" aria-hidden="true">{isOwned ? item.emoji : '🔒'}</span>
-                      <span className="text-[11px] font-bold text-ink-900 leading-tight">{item.name}</span>
-                      {isEquipped && (
-                        <span className="absolute -top-1.5 -right-1.5 w-5 h-5 rounded-full bg-sage-500 text-white flex items-center justify-center">
-                          <Check className="w-3 h-3" />
-                        </span>
-                      )}
-                    </button>
-                  );
-                })}
-              </div>
+            <div className="space-y-5">
+              <section className="space-y-3">
+                {sectionTitle('🎬 Animasi')}
+                <div className="grid grid-cols-3 gap-2">
+                  {animations.map((item) =>
+                    tile(item, {
+                      selected: preview === item.id,
+                      badge: state?.equipped === item.id,
+                      onClick: () => (owned.has(item.id) ? play(item.id) : goShopFor(item)),
+                    })
+                  )}
+                </div>
 
-              {previewItem && owned.has(previewItem.id) && (
-                state?.equipped === previewItem.id ? (
-                  <p className="w-full py-3 rounded-2xl bg-sage-100 text-sage-600 text-sm font-bold flex items-center justify-center gap-1.5">
-                    <Check className="w-4 h-4" />
-                    Equipped
-                  </p>
-                ) : (
-                  <button
-                    onClick={() => handleEquip(previewItem.id)}
-                    disabled={busyId !== null}
-                    className="w-full py-3 rounded-2xl bg-mist-500 hover:bg-mist-600 text-white text-sm font-bold disabled:opacity-60"
-                  >
-                    {busyId === previewItem.id ? '…' : `Equip ${previewItem.emoji} ${previewItem.name}`}
-                  </button>
-                )
+                {previewItem && previewItem.kind === 'animation' && owned.has(previewItem.id) && (
+                  state?.equipped === previewItem.id ? (
+                    <p className="w-full py-3 rounded-2xl bg-sage-100 text-sage-600 text-sm font-bold flex items-center justify-center gap-1.5">
+                      <Check className="w-4 h-4" />
+                      Equipped
+                    </p>
+                  ) : (
+                    <button
+                      onClick={() => handleEquip(previewItem.id)}
+                      disabled={busyId !== null}
+                      className="w-full py-3 rounded-2xl bg-mist-500 hover:bg-mist-600 text-white text-sm font-bold disabled:opacity-60"
+                    >
+                      {busyId === previewItem.id ? '…' : `Equip ${previewItem.emoji} ${previewItem.name}`}
+                    </button>
+                  )
+                )}
+              </section>
+
+              {accessories.length > 0 && (
+                <section className="space-y-3">
+                  {sectionTitle('🎩 Aksesori')}
+                  <p className="text-[11px] text-ink-500">Tekan untuk pakai atau tanggalkan. Satu item bagi setiap bahagian (kepala, mata, dada, latar).</p>
+                  <div className="grid grid-cols-3 gap-2">
+                    {accessories.map((item) =>
+                      tile(item, {
+                        selected: worn.includes(item.id),
+                        badge: worn.includes(item.id),
+                        onClick: () => (owned.has(item.id) ? handleToggleWear(item) : goShopFor(item)),
+                      })
+                    )}
+                  </div>
+                </section>
               )}
 
               {owned.size === 0 && (
                 <p className="text-sm text-ink-500 text-center">
-                  Belum ada animasi. Kumpul Coin dan buka animasi di{' '}
+                  Belum ada item. Kumpul Coin dan buka animasi atau aksesori di{' '}
                   <button onClick={() => setTab('shop')} className="font-bold text-mist-600 underline">
                     Inky Shop
                   </button>

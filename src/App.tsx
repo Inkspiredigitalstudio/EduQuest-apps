@@ -72,6 +72,7 @@ import { SocialAndLeaderboardModal } from './features/dashboard/SocialAndLeaderb
 // Inky Shop / My Inky — spend coins on Inky animations.
 import { InkyShopModal } from './features/inky/InkyShopModal';
 import { fetchInkyState } from './features/inky/inkyShop';
+import { InkyWornContext } from './features/inky/inkyAccessories';
 import { claimPracticeRun } from './lib/rewards';
 
 const THEME_STORAGE_KEY = 'eduquest_theme';
@@ -210,18 +211,21 @@ export default function App() {
   const [isSocialOpen, setIsSocialOpen] = useState(false);
   const [isInkyShopOpen, setIsInkyShopOpen] = useState(false);
   const [inkyEquipped, setInkyEquipped] = useState<string | null>(null);
+  const [inkyWorn, setInkyWorn] = useState<string[]>([]);
 
   // Equipped Inky animation is stored server-side; load it per login so the
   // result screens can play it. Also refresh the coin balance: the cached
   // local copy can be stale (purchases/corrections made elsewhere).
   useEffect(() => {
     setInkyEquipped(null);
+    setInkyWorn([]);
     if (!user?.id || (user.role && user.role !== 'student')) return;
     let cancelled = false;
     fetchInkyState()
       .then((s) => {
         if (cancelled) return;
         setInkyEquipped(s.equipped);
+        setInkyWorn(s.accessories);
         handleServerCoinChange(s.coin);
       })
       .catch(() => {});
@@ -707,6 +711,7 @@ export default function App() {
   }
 
   return (
+    <InkyWornContext.Provider value={inkyWorn}>
     <div className="min-h-screen bg-cream-100 text-ink-900 font-sans antialiased flex flex-col">
       {/* Top Navigation Bar */}
       <Header
@@ -960,6 +965,7 @@ export default function App() {
           }}
           onCoinChange={handleServerCoinChange}
           onEquippedChange={setInkyEquipped}
+          onAccessoriesChange={setInkyWorn}
         />
       )}
 
@@ -1030,5 +1036,6 @@ export default function App() {
         />
       )}
     </div>
+    </InkyWornContext.Provider>
   );
 }
