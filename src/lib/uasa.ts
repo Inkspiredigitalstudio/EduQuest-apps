@@ -46,7 +46,10 @@ export async function requestUasaHint(questionId: string, previousHints: string[
     body: JSON.stringify({ question_id: questionId, previous_hints: previousHints }),
   });
   const body = await res.json().catch(() => ({}));
-  if (!res.ok) throw new Error(body?.error || 'Inky tak jumpa petunjuk kali ini. Cuba tekan sekali lagi.');
+  if (!res.ok) {
+    const msg = body?.error || 'Inky tak jumpa petunjuk kali ini. Cuba tekan sekali lagi.';
+    throw new Error(body?.code ? `${msg} (kod: ${body.code})` : msg);
+  }
   return body as UasaHintResult;
 }
 
@@ -253,6 +256,7 @@ export interface AdminQuestionInput {
   year: UasaYear;
   question_text: string;
   explanation: string;
+  hints?: string[] | null;
   bahagian: UasaBahagian;
   difficulty?: number;
   is_kbat?: boolean;

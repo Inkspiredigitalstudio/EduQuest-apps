@@ -21,6 +21,7 @@
 //   VITE_SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY, UASA_API_KEY
 
 import { createClient, SupabaseClient } from '@supabase/supabase-js';
+import { leaksAnswer } from './_lib/hintLeak.js';
 
 const supabaseUrl = (process.env.VITE_SUPABASE_URL || '').trim();
 const serviceRoleKey = (process.env.SUPABASE_SERVICE_ROLE_KEY || '').trim();
@@ -54,6 +55,7 @@ interface QuestionInput {
   year: number;
   question_text: string;
   explanation?: string;
+  hints?: string[] | null;
   bahagian: 'A' | 'B' | 'C';
   difficulty?: number;
   is_kbat?: boolean;
@@ -82,6 +84,20 @@ function validateQuestionShape(q: QuestionInput): string[] {
       if (!c.option_text || !c.option_text.trim()) errors.push(`Pilihan ${i + 1} kosong.`);
     });
   }
+
+  // Optional step-by-step hints: 1-5 short non-empty steps, and none may state
+  // the correct answer (a hint is meant to point the way, not give it away).
+  if (q.hints !== undefined && q.hints !== null) {
+    if (!Array.isArray(q.hints) || q.hints.length < 1 || q.hints.length > 5) {
+      errors.push('Petunjuk mesti 1 hingga 5 langkah.');
+    } else {
+      const correct = Array.isArray(q.choices) ? q.choices.find((c) => c.is_correct)?.option_text || '' : '';
+      q.hints.forEach((h, i) => {
+        if (typeof h !== 'string' || !h.trim()) errors.push(`Petunjuk ${i + 1} kosong.`);
+        else if (correct && leaksAnswer(h, correct, q.question_text || '')) errors.push(`Petunjuk ${i + 1} mendedahkan jawapan.`);
+      });
+    }
+  }
   return errors;
 }
 
@@ -94,6 +110,7 @@ async function insertQuestionWithChoices(sb: SupabaseClient, q: QuestionInput) {
       year: q.year,
       question_text: q.question_text,
       explanation: q.explanation,
+      hints: q.hints && q.hints.length ? q.hints.map((h) => h.trim()) : null,
       bahagian: q.bahagian,
       difficulty: q.difficulty ?? 1,
       is_kbat: q.is_kbat ?? false,

@@ -274,6 +274,7 @@ export interface UasaQuestion {
   year: UasaYear;
   question_text: string;
   explanation?: string;
+  hints?: string[] | null;
   bahagian: UasaBahagian;
   difficulty: 1 | 2 | 3;
   is_kbat: boolean;

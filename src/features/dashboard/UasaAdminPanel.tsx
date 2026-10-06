@@ -28,6 +28,7 @@ const IMPORT_PLACEHOLDER = `[
     "marks": 1,
     "question_text": "Apakah hasil tambah 25 + 17?",
     "explanation": "25 + 17 = 42.",
+    "hints": ["Susun nombor ikut nilai tempat.", "Tambah digit sa dahulu, kemudian digit puluh."],
     "image_url": "",
     "choices": [
       { "option_text": "42", "is_correct": true },
@@ -161,6 +162,7 @@ export const UasaAdminPanel: React.FC<UasaAdminPanelProps> = ({ user }) => {
       marks: q.marks,
       question_text: q.question_text,
       explanation: q.explanation || '',
+      hints: q.hints && q.hints.length ? q.hints : null,
       image_url: q.image_url || '',
       status: q.status,
       choices: q.choices.map((c) => ({ option_text: c.option_text, is_correct: c.is_correct })),
@@ -176,11 +178,14 @@ export const UasaAdminPanel: React.FC<UasaAdminPanelProps> = ({ user }) => {
       return;
     }
     setFormError(null);
+    // The textarea keeps raw lines while typing; tidy and cap at save time.
+    const cleanedHints = (form.hints || []).map((h) => h.trim()).filter(Boolean);
+    const payload: AdminQuestionInput = { ...form, hints: cleanedHints.length ? cleanedHints : null };
     try {
       if (editingId) {
-        await adminUpdateUasaQuestion(user.id, editingId, form, form.choices);
+        await adminUpdateUasaQuestion(user.id, editingId, payload, payload.choices);
       } else {
-        await adminCreateUasaQuestion(user.id, form);
+        await adminCreateUasaQuestion(user.id, payload);
       }
       soundManager.playCorrect();
       setForm(null);
@@ -341,6 +346,15 @@ export const UasaAdminPanel: React.FC<UasaAdminPanelProps> = ({ user }) => {
                 placeholder="Penerangan (dipaparkan selepas jawab)"
                 className="w-full px-3 py-2.5 rounded-xl border border-sand-200 text-sm min-h-[60px]"
               />
+              <div className="space-y-1">
+                <textarea
+                  value={(form.hints || []).join('\n')}
+                  onChange={(e) => setForm({ ...form, hints: e.target.value.split('\n') })}
+                  placeholder={'Petunjuk 💡 (Matematik sahaja) — satu langkah setiap baris, maksimum 5.\nContoh:\nSamakan penyebut dahulu.\nTukar 2/3 supaya penyebutnya 6.'}
+                  className="w-full px-3 py-2.5 rounded-xl border border-sand-200 text-sm min-h-[80px]"
+                />
+                <p className="text-[11px] text-ink-500">Jangan tulis jawapan akhir dalam petunjuk. Kosongkan jika tiada, Inky akan jana sendiri.</p>
+              </div>
               <div className="space-y-2">
                 {form.choices.map((c, idx) => (
                   <div key={idx} className="flex items-center gap-2">
