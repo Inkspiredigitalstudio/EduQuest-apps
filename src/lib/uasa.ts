@@ -141,7 +141,8 @@ export interface UasaStartExamResult {
   wrongAnswers?: any[];
 }
 
-export async function startOrResumeUasaExam(params: { user_id: string; year: UasaYear; subject_id: string }): Promise<UasaStartExamResult> {
+// restart: true closes any attempt still open for this exam and draws a fresh set.
+export async function startOrResumeUasaExam(params: { user_id: string; year: UasaYear; subject_id: string; restart?: boolean }): Promise<UasaStartExamResult> {
   return callUasaApi('start_exam', params);
 }
 

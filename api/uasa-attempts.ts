@@ -140,17 +140,42 @@ async function finalizeAttempt(sb: SupabaseClient, attemptId: string) {
   return { attempt, wrongAnswers };
 }
 
+async function abandonAttempt(sb: SupabaseClient, attemptId: string) {
+  const { error } = await sb
+    .from('uasa_attempts')
+    .update({ status: 'abandoned', completed_at: new Date().toISOString() })
+    .eq('id', attemptId);
+  if (error) throw error;
+}
+
+// Closes a leftover attempt without showing it to the student: one with real
+// answers is scored like a normal finish (the record stays), an untouched one
+// is marked abandoned so it doesn't appear as a 0% exam.
+async function closeStaleAttempt(sb: SupabaseClient, attemptId: string) {
+  const { count, error } = await sb
+    .from('uasa_attempt_answers')
+    .select('id', { count: 'exact', head: true })
+    .eq('attempt_id', attemptId)
+    .not('selected_choice_id', 'is', null);
+  if (error) throw error;
+  if (count) await finalizeAttempt(sb, attemptId);
+  else await abandonAttempt(sb, attemptId);
+}
+
 async function runAction(action: string, payload: any): Promise<ActionResult> {
   const sb = getServiceClient();
 
   switch (action) {
     case 'start_exam': {
-      const { user_id, year, subject_id } = payload;
+      const { user_id, year, subject_id, restart } = payload;
       if (!user_id || !year || !subject_id) {
         return { status: 400, body: { error: 'user_id, year, subject_id diperlukan.' } };
       }
 
-      const { data: existing, error: existingErr } = await sb
+      // Every open attempt for this exam, newest first. There can be more than
+      // one (double-fired starts, old sittings nobody finished), and each one
+      // left open would otherwise block the next start.
+      const { data: openAttempts, error: openErr } = await sb
         .from('uasa_attempts')
         .select('*')
         .eq('user_id', user_id)
@@ -158,17 +183,22 @@ async function runAction(action: string, payload: any): Promise<ActionResult> {
         .eq('year', year)
         .eq('module', 'exam')
         .eq('status', 'in_progress')
-        .order('created_at', { ascending: false })
-        .limit(1)
-        .maybeSingle();
-      if (existingErr) throw existingErr;
+        .order('created_at', { ascending: false });
+      if (openErr) throw openErr;
 
-      if (existing) {
-        const isExpired = existing.deadline_at && new Date(existing.deadline_at).getTime() <= Date.now();
-        if (isExpired) {
-          const result = await finalizeAttempt(sb, existing.id);
-          return { status: 200, body: { expired: true, ...result } };
-        }
+      const now = Date.now();
+      const isExpired = (a: any) => Boolean(a.deadline_at) && new Date(a.deadline_at).getTime() <= now;
+      const expired = (openAttempts || []).filter(isExpired);
+      const active = (openAttempts || []).filter((a: any) => !isExpired(a));
+
+      if (restart) {
+        // "Mula Semula": clear everything still open, then fall through to a fresh set.
+        for (const a of active) await abandonAttempt(sb, a.id);
+        for (const a of expired) await closeStaleAttempt(sb, a.id);
+      } else if (active.length > 0) {
+        const existing = active[0];
+        for (const a of active.slice(1)) await abandonAttempt(sb, a.id);
+        for (const a of expired) await closeStaleAttempt(sb, a.id);
 
         const { data: answerRows, error: answerErr } = await sb
           .from('uasa_attempt_answers')
@@ -195,6 +225,13 @@ async function runAction(action: string, payload: any): Promise<ActionResult> {
             ),
           },
         };
+      } else if (expired.length > 0) {
+        // Time ran out while the app was closed: show that result once (the
+        // result screen offers "Mula Semula"), and close the other leftovers
+        // so the next start is a fresh exam.
+        for (const a of expired.slice(1)) await closeStaleAttempt(sb, a.id);
+        const result = await finalizeAttempt(sb, expired[0].id);
+        return { status: 200, body: { expired: true, ...result } };
       }
 
       const drawn = await drawExamQuestionSet(sb, subject_id, year);
