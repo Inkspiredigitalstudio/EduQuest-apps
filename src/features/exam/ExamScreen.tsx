@@ -1,7 +1,7 @@
-import React, { useState, useMemo } from 'react';
+import React, { useState, useMemo, useRef } from 'react';
 import { Section, Question, Choice, UserProfile } from '../../types';
 import { soundManager } from '../../lib/audio';
-import { ArrowLeft, CheckCircle2, XCircle, Flame, Coins, Sparkles, ArrowRight, BookOpen, Trophy } from 'lucide-react';
+import { ArrowLeft, CheckCircle2, XCircle, Flame, Coins, Sparkles, ArrowRight, BookOpen, Trophy, Lightbulb, LoaderCircle } from 'lucide-react';
 import { ScratchPad } from '../uasa/ScratchPad';
 
 interface ExamScreenProps {
@@ -19,6 +19,8 @@ interface ExamScreenProps {
   // keeps today's behaviour: student already picked this section themselves.
   mode?: 'practice' | 'exam';
   showScratchpad?: boolean;
+  // When set, shows a "Minta Diajar" button that reveals one hint per press.
+  onRequestHint?: (questionId: string, previousHints: string[]) => Promise<{ hint: string | null; done: boolean }>;
 }
 
 function shuffleQuestionsChoices(questions: Question[]): Question[] {
@@ -80,6 +82,7 @@ export const ExamScreen: React.FC<ExamScreenProps> = ({
   explanationLabel = 'Penerangan Hukum & Dalil:',
   mode = 'practice',
   showScratchpad = false,
+  onRequestHint,
 }) => {
   const questions = useMemo(() => shuffleQuestionsChoices(rawQuestions), [rawQuestions]);
 
@@ -95,6 +98,13 @@ export const ExamScreen: React.FC<ExamScreenProps> = ({
   const [coinsEarned, setCoinsEarned] = useState(0);
   const [streak, setStreak] = useState(0);
   const [answersMap, setAnswersMap] = useState<Record<string, string>>({});
+
+  const [hints, setHints] = useState<string[]>([]);
+  const [hintsDone, setHintsDone] = useState(false);
+  const [hintLoading, setHintLoading] = useState(false);
+  const [hintError, setHintError] = useState<string | null>(null);
+  // A slow hint must not land on the next question if the student moved on.
+  const hintQuestionRef = useRef<string | null>(null);
 
   const currentQuestion = questions[currentIndex];
   const progressPercent = Math.round(((currentIndex + 1) / questions.length) * 100);
@@ -175,6 +185,10 @@ export const ExamScreen: React.FC<ExamScreenProps> = ({
       setCurrentIndex((i) => i + 1);
       setSelectedChoiceId(null);
       setIsAnswered(false);
+      setHints([]);
+      setHintsDone(false);
+      setHintLoading(false);
+      setHintError(null);
     } else {
       setIsSubmitting(true);
       soundManager.playLevelUp();
@@ -199,6 +213,25 @@ export const ExamScreen: React.FC<ExamScreenProps> = ({
   };
 
   const selectedChoice = currentQuestion.choices.find((c) => c.id === selectedChoiceId);
+  hintQuestionRef.current = currentQuestion.id;
+
+  const handleRequestHint = async () => {
+    if (!onRequestHint || hintLoading || hintsDone) return;
+    soundManager.playClick();
+    const qid = currentQuestion.id;
+    setHintLoading(true);
+    setHintError(null);
+    try {
+      const result = await onRequestHint(qid, hints);
+      if (hintQuestionRef.current !== qid) return;
+      if (result.hint) setHints((prev) => [...prev, result.hint as string]);
+      if (result.done || !result.hint) setHintsDone(true);
+    } catch (e) {
+      if (hintQuestionRef.current === qid) setHintError(e instanceof Error ? e.message : 'Petunjuk tidak dapat dijana. Sila cuba lagi.');
+    } finally {
+      if (hintQuestionRef.current === qid) setHintLoading(false);
+    }
+  };
 
   // With the scratchpad, the question and the answers become separate cards so
   // the pad sits between them on phones (read → work it out → answer) and in a
@@ -262,6 +295,35 @@ export const ExamScreen: React.FC<ExamScreenProps> = ({
           {currentQuestion.image_url && (
             <div className="rounded-2xl overflow-hidden border border-sand-200 bg-cream-100">
               <img src={currentQuestion.image_url} alt="Gambar soalan" className="w-full max-h-72 object-contain" />
+            </div>
+          )}
+
+          {onRequestHint && (hints.length > 0 || !isAnswered) && (
+            <div className="space-y-2 pt-2">
+              {hints.map((h, i) => (
+                <div key={i} className="flex items-start gap-2.5 p-3 rounded-2xl bg-honey-100 border border-honey-200 text-sm text-ink-900 leading-relaxed">
+                  <Lightbulb className="w-4 h-4 text-honey-500 shrink-0 mt-0.5" />
+                  <span>
+                    <span className="font-bold">Langkah {i + 1}: </span>
+                    {h}
+                  </span>
+                </div>
+              ))}
+              {hintError && <p className="text-xs font-bold text-clay-500">{hintError}</p>}
+              {!isAnswered &&
+                (hintsDone ? (
+                  <p className="text-xs font-bold text-ink-500">Itu sahaja petunjuk. Cuba kira dan pilih jawapan anda!</p>
+                ) : (
+                  <button
+                    type="button"
+                    onClick={handleRequestHint}
+                    disabled={hintLoading}
+                    className="flex items-center gap-2 px-4 py-2.5 rounded-2xl text-sm font-bold border-2 border-honey-200 bg-honey-100 text-ink-900 hover:bg-honey-200/70 disabled:opacity-60 transition-colors"
+                  >
+                    {hintLoading ? <LoaderCircle className="w-4 h-4 animate-spin" /> : <Lightbulb className="w-4 h-4 text-honey-500" />}
+                    <span>{hintLoading ? 'Sedang berfikir...' : hints.length ? 'Langkah Seterusnya' : 'Minta Diajar'}</span>
+                  </button>
+                ))}
             </div>
           )}
         </div>

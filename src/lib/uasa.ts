@@ -30,6 +30,26 @@ async function callUasaApi<T = any>(action: string, payload: any): Promise<T> {
   return body as T;
 }
 
+export interface UasaHintResult {
+  hint: string | null;
+  done: boolean;
+}
+
+// "Minta Diajar" — next step-by-step hint for a Matematik practice question.
+export async function requestUasaHint(questionId: string, previousHints: string[]): Promise<UasaHintResult> {
+  const res = await fetch('/api/uasa-tutor', {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+      ...(UASA_API_KEY ? { 'x-uasa-api-key': UASA_API_KEY } : {}),
+    },
+    body: JSON.stringify({ question_id: questionId, previous_hints: previousHints }),
+  });
+  const body = await res.json().catch(() => ({}));
+  if (!res.ok) throw new Error(body?.error || 'Petunjuk tidak dapat dijana. Sila cuba lagi.');
+  return body as UasaHintResult;
+}
+
 export async function fetchUasaSubjects(): Promise<UasaSubject[]> {
   if (!isSupabaseConfigured || !supabase) return [];
   const { data, error } = await supabase.from('uasa_subjects').select('*').eq('status', 'active').order('name');

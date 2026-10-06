@@ -28,6 +28,7 @@ import {
 import {
   fetchUasaSubjects,
   fetchUasaQuestionsForChapter,
+  requestUasaHint,
   saveUasaPracticeAttempt,
   startOrResumeUasaExam,
   finishUasaExam,
@@ -740,6 +741,7 @@ export default function App() {
             onCancel={() => setView('uasa-entry')}
             explanationLabel="Penerangan:"
             showScratchpad={uasaSubject?.name.trim().toLowerCase() === 'matematik'}
+            onRequestHint={uasaSubject?.name.trim().toLowerCase() === 'matematik' ? requestUasaHint : undefined}
           />
         )}
 
