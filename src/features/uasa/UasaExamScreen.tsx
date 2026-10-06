@@ -2,12 +2,14 @@ import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { soundManager } from '../../lib/audio';
 import { submitUasaExamAnswer, UasaStartExamResult, UasaFinishExamResult } from '../../lib/uasa';
 import { ArrowLeft, ArrowRight, Clock, CheckCircle2, Send } from 'lucide-react';
+import { ScratchPad } from './ScratchPad';
 
 interface UasaExamScreenProps {
   data: UasaStartExamResult;
   onFinish: (result: UasaFinishExamResult) => void;
   onExit: () => void;
   finishExam: (attemptId: string) => Promise<UasaFinishExamResult>;
+  showScratchpad?: boolean;
 }
 
 // Real exam behaviour: no immediate right/wrong feedback (unlike Practice's
@@ -15,7 +17,7 @@ interface UasaExamScreenProps {
 // wrongAnswers review. Resume-safe: every answer persists individually via
 // submitUasaExamAnswer as it's picked, so closing the app mid-sitting loses
 // nothing — App.tsx's startOrResumeUasaExam re-fetches this same state.
-export const UasaExamScreen: React.FC<UasaExamScreenProps> = ({ data, onFinish, onExit, finishExam }) => {
+export const UasaExamScreen: React.FC<UasaExamScreenProps> = ({ data, onFinish, onExit, finishExam, showScratchpad = false }) => {
   const [currentIndex, setCurrentIndex] = useState(0);
   const [answersMap, setAnswersMap] = useState<Record<string, string>>(data.answersMap || {});
   const [secondsLeft, setSecondsLeft] = useState(() => Math.max(0, Math.floor((new Date(data.deadline_at).getTime() - Date.now()) / 1000)));
@@ -97,9 +99,13 @@ export const UasaExamScreen: React.FC<UasaExamScreenProps> = ({ data, onFinish, 
   }
 
   const bahagianLabel: Record<string, string> = { A: 'Bahagian A', B: 'Bahagian B', C: 'Bahagian C (KBAT)' };
+  // Same split as Practice: pad between question and answers on phones, sticky
+  // right column on landscape tablets. Strokes persist per question, so jumping
+  // around via the number grid keeps each question's working.
+  const cardClass = 'bg-cream-50 border border-sand-200 rounded-3xl p-6 sm:p-8';
 
   return (
-    <div className="max-w-3xl mx-auto space-y-6 pb-12">
+    <div className={`${showScratchpad ? 'max-w-6xl' : 'max-w-3xl'} mx-auto space-y-6 pb-12`}>
       {/* Header: timer + exit */}
       <div className="bg-cream-50 border border-sand-200 rounded-3xl p-4 sm:p-5 flex items-center justify-between gap-4">
         <button
@@ -153,8 +159,8 @@ export const UasaExamScreen: React.FC<UasaExamScreenProps> = ({ data, onFinish, 
       </div>
 
       {/* Question card */}
-      <div className="bg-cream-50 border border-sand-200 rounded-3xl p-6 sm:p-8 space-y-6">
-        <div className="space-y-3">
+      <div className={showScratchpad ? 'grid gap-4 lg:gap-6 lg:grid-cols-2 lg:grid-rows-[auto_1fr] lg:items-start' : `${cardClass} space-y-6`}>
+        <div className={showScratchpad ? `${cardClass} space-y-3 lg:col-start-1 lg:row-start-1` : 'space-y-3'}>
           <div className="flex items-center justify-between text-xs font-bold text-ink-500">
             <span className="uppercase tracking-wide text-mist-600 bg-mist-100 px-2.5 py-1 rounded-lg">
               {bahagianLabel[currentQuestion.bahagian] || currentQuestion.bahagian} • Soalan {currentIndex + 1}/{questions.length}
@@ -173,6 +179,13 @@ export const UasaExamScreen: React.FC<UasaExamScreenProps> = ({ data, onFinish, 
           )}
         </div>
 
+        {showScratchpad && (
+          <div className="lg:col-start-2 lg:row-start-1 lg:row-span-2 lg:sticky lg:top-4">
+            <ScratchPad questionId={currentQuestion.id} />
+          </div>
+        )}
+
+        <div className={showScratchpad ? `${cardClass} space-y-6 lg:col-start-1 lg:row-start-2` : 'space-y-6'}>
         <div className="space-y-3 pt-2">
           {currentQuestion.choices.map((choice, idx) => {
             const isSelected = answersMap[currentQuestion.id] === choice.id;
@@ -224,6 +237,7 @@ export const UasaExamScreen: React.FC<UasaExamScreenProps> = ({ data, onFinish, 
               <span>Hantar Jawapan</span>
             </button>
           )}
+        </div>
         </div>
       </div>
     </div>

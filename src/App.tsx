@@ -765,6 +765,7 @@ export default function App() {
               setView('uasa-exam-result');
             }}
             onExit={() => setView('dashboard')}
+            showScratchpad={uasaSubject?.name.trim().toLowerCase() === 'matematik'}
           />
         )}
 
