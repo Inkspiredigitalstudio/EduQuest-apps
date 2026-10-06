@@ -644,7 +644,7 @@ export default function App() {
     setView('uasa-practice-result');
   };
 
-  const handleUasaStartExam = async (year: UasaYear, subject: UasaSubject) => {
+  const handleUasaStartExam = async (year: UasaYear, subject: UasaSubject, restart = false) => {
     if (!user) {
       setIsAuthOpen(true);
       return;
@@ -652,7 +652,7 @@ export default function App() {
     setUasaYear(year);
     setUasaSubject(subject);
     try {
-      const data = await startOrResumeUasaExam({ user_id: user.id, year, subject_id: subject.id });
+      const data = await startOrResumeUasaExam({ user_id: user.id, year, subject_id: subject.id, restart });
       if (data.expired && data.attempt && data.wrongAnswers) {
         setUasaExamResult({ attempt: data.attempt, wrongAnswers: data.wrongAnswers });
         setView('uasa-exam-result');
@@ -832,7 +832,11 @@ export default function App() {
         )}
 
         {view === 'uasa-exam-result' && uasaExamResult && (
-          <UasaExamResult result={uasaExamResult} onGoDashboard={() => setView('dashboard')} />
+          <UasaExamResult
+            result={uasaExamResult}
+            onGoDashboard={() => setView('dashboard')}
+            onRestart={uasaYear && uasaSubject ? () => handleUasaStartExam(uasaYear, uasaSubject, true) : undefined}
+          />
         )}
 
         {view === 'pksk-exam-level' && (

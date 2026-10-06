@@ -1,16 +1,18 @@
-import React from 'react';
+import React, { useState } from 'react';
 import { UasaFinishExamResult } from '../../lib/uasa';
-import { Trophy, XCircle, BookOpen, Home } from 'lucide-react';
+import { Trophy, XCircle, BookOpen, Home, RotateCcw } from 'lucide-react';
 
 interface UasaExamResultProps {
   result: UasaFinishExamResult;
   onGoDashboard: () => void;
+  onRestart?: () => Promise<void> | void;
 }
 
 const BAHAGIAN_LABEL: Record<string, string> = { A: 'Bahagian A', B: 'Bahagian B', C: 'Bahagian C (KBAT)' };
 
-export const UasaExamResult: React.FC<UasaExamResultProps> = ({ result, onGoDashboard }) => {
+export const UasaExamResult: React.FC<UasaExamResultProps> = ({ result, onGoDashboard, onRestart }) => {
   const { attempt, wrongAnswers } = result;
+  const [isRestarting, setIsRestarting] = useState(false);
 
   return (
     <div className="max-w-3xl mx-auto space-y-6 pb-12">
@@ -68,6 +70,25 @@ export const UasaExamResult: React.FC<UasaExamResultProps> = ({ result, onGoDash
             </div>
           ))}
         </div>
+      )}
+
+      {onRestart && (
+        <button
+          disabled={isRestarting}
+          onClick={async () => {
+            if (isRestarting) return;
+            setIsRestarting(true);
+            try {
+              await onRestart();
+            } finally {
+              setIsRestarting(false);
+            }
+          }}
+          className="w-full py-4 px-6 bg-sage-500 hover:bg-sage-600 disabled:opacity-60 disabled:cursor-not-allowed text-white font-bold text-base rounded-2xl transition-colors flex items-center justify-center gap-2"
+        >
+          <RotateCcw className="w-5 h-5" />
+          <span>{isRestarting ? 'Menyediakan soalan baharu...' : 'Mula Semula Exam'}</span>
+        </button>
       )}
 
       <button
