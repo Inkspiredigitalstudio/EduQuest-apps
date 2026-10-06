@@ -2,6 +2,7 @@ import React, { useState } from 'react';
 import { UserProfile, UserProgress } from '../../types';
 import { soundManager } from '../../lib/audio';
 import { updateUserPhone } from '../../lib/supabase';
+import { InkyAvatar } from '../inky/InkyAvatar';
 import {
   User,
   Trophy,
@@ -28,9 +29,10 @@ interface ProfileModalProps {
   onClose: () => void;
   onLogout: () => void;
   onUserUpdate?: (updated: UserProfile) => void;
+  onOpenInkyShop?: () => void;
 }
 
-export const ProfileModal: React.FC<ProfileModalProps> = ({ isOpen, user, progressList = [], onClose, onLogout, onUserUpdate }) => {
+export const ProfileModal: React.FC<ProfileModalProps> = ({ isOpen, user, progressList = [], onClose, onLogout, onUserUpdate, onOpenInkyShop }) => {
   const [copied, setCopied] = useState(false);
   const [activeTab, setActiveTab] = useState<'student' | 'parent'>('student');
   const [editingPhone, setEditingPhone] = useState(false);
@@ -222,6 +224,26 @@ export const ProfileModal: React.FC<ProfileModalProps> = ({ isOpen, user, progre
                   </div>
                 </div>
               </div>
+
+              {onOpenInkyShop && (!user.role || user.role === 'student') && (
+                <button
+                  onClick={() => {
+                    soundManager.playClick();
+                    onOpenInkyShop();
+                  }}
+                  className="w-full flex items-center gap-3 p-4 rounded-2xl border-2 border-honey-300 bg-honey-100/60 hover:bg-honey-100 text-left transition-colors"
+                >
+                  <InkyAvatar idle className="w-14 h-14 shrink-0" />
+                  <span className="flex-1 min-w-0">
+                    <span className="block text-sm font-display font-bold text-ink-900">Inky Shop &amp; My Inky</span>
+                    <span className="block text-[11px] text-ink-500">Guna Koin untuk buka animasi baru Inky</span>
+                  </span>
+                  <span className="shrink-0 flex items-center gap-1 text-honey-500 font-bold text-sm">
+                    <Coins className="w-4 h-4" />
+                    {user.coin}
+                  </span>
+                </button>
+              )}
 
               {/* Invite Code for Parent */}
               <div className="bg-cream-100 p-4 sm:p-5 rounded-2xl border-2 border-mist-200 space-y-3">

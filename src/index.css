@@ -144,18 +144,10 @@ h1, h2, h3, .font-display {
   scrollbar-width: none;
 }
 
-/* Inky mascot (Minta Petunjuk loading state) — slow, gentle loops only */
+/* Inky mascot (Petunjuk loading state) — slow, gentle loops only */
 @keyframes inky-bob {
   0%, 100% { transform: translateY(0); }
   50% { transform: translateY(-3px); }
-}
-@keyframes inky-wiggle {
-  0%, 100% { transform: rotate(-6deg); }
-  50% { transform: rotate(6deg); }
-}
-@keyframes inky-blink {
-  0%, 92%, 100% { transform: scaleY(1); }
-  95% { transform: scaleY(0.1); }
 }
 @keyframes inky-bulb {
   0%, 100% { transform: scale(0.85) rotate(-8deg); opacity: 0.7; }
@@ -170,19 +162,110 @@ h1, h2, h3, .font-display {
   to { opacity: 1; transform: none; }
 }
 .inky-bob { animation: inky-bob 2.4s ease-in-out infinite; }
-.inky-tentacle {
-  transform-box: fill-box;
-  transform-origin: top center;
-  animation: inky-wiggle 1.6s ease-in-out infinite;
-}
-.inky-blink {
-  transform-box: fill-box;
-  transform-origin: center;
-  animation: inky-blink 3.2s ease-in-out infinite;
-}
 .inky-bulb { display: inline-block; animation: inky-bulb 1.8s ease-in-out infinite; }
 .inky-dot { animation: inky-dot 1.2s ease-in-out infinite; }
 .inky-pop { animation: inky-pop 0.35s ease-out both; }
+
+/* Inky Shop animations (see src/features/inky/inkyAnimations.ts). They move
+   the whole character image and place emoji effects by % of the box, so any
+   replacement artwork works without touching these. Each plays once. */
+.inky-anim-wave, .inky-anim-wink, .inky-anim-dance, .inky-anim-celebrate {
+  transform-origin: 50% 100%;
+}
+.inky-anim-jump { transform-origin: 50% 55%; }
+.inky-anim-wave { animation: inky-wave 1.8s ease-in-out both; }
+.inky-anim-wink { animation: inky-wink 1.4s ease-in-out both; }
+.inky-anim-dance { animation: inky-dance 2s ease-in-out both; }
+.inky-anim-celebrate { animation: inky-celebrate 1.8s ease-out both; }
+.inky-anim-jump { animation: inky-jump 1.6s cubic-bezier(0.3, 0, 0.3, 1) both; }
+
+@keyframes inky-wave {
+  0%, 100% { transform: rotate(0); }
+  15%, 45%, 75% { transform: rotate(-7deg); }
+  30%, 60%, 90% { transform: rotate(7deg); }
+}
+@keyframes inky-wink {
+  0%, 100% { transform: rotate(0) scale(1); }
+  25% { transform: rotate(-10deg) scale(1.06); }
+  60% { transform: rotate(-10deg) scale(1.06); }
+}
+/* Keep the same transform-function list in every keyframe so rotations
+   interpolate as rotations (mismatched lists fall back to matrices). */
+@keyframes inky-dance {
+  0%, 100% { transform: translateY(0) rotate(0) scale(1, 1); }
+  12.5%, 62.5% { transform: translateY(-10%) rotate(-10deg) scale(1, 1); }
+  25%, 50%, 75% { transform: translateY(0) rotate(0) scale(1.04, 0.94); }
+  37.5%, 87.5% { transform: translateY(-10%) rotate(10deg) scale(1, 1); }
+}
+@keyframes inky-celebrate {
+  0%, 85%, 100% { transform: translateY(0) rotate(0) scale(1, 1); }
+  15% { transform: translateY(0) rotate(0) scale(1.05, 0.9); }
+  35% { transform: translateY(-22%) rotate(-6deg) scale(1.08, 1.08); }
+  55% { transform: translateY(0) rotate(0) scale(1.05, 0.92); }
+  70% { transform: translateY(-10%) rotate(6deg) scale(1.04, 1.04); }
+}
+@keyframes inky-jump {
+  0% { transform: translateY(0) rotate(0) scale(1, 1); }
+  15% { transform: translateY(0) rotate(0) scale(1.15, 0.8); }
+  40% { transform: translateY(-40%) rotate(0) scale(0.92, 1.12); }
+  60% { transform: translateY(-40%) rotate(360deg) scale(1, 1); }
+  80% { transform: translateY(0) rotate(360deg) scale(1.12, 0.85); }
+  100% { transform: translateY(0) rotate(360deg) scale(1, 1); }
+}
+
+.inky-fx {
+  position: absolute;
+  font-size: 1.5rem;
+  line-height: 1;
+  pointer-events: none;
+  opacity: 0;
+}
+.inky-fx-wave { top: 18%; right: -8%; transform-origin: 70% 90%; animation: inky-fx-wave 1.8s ease-in-out both; }
+.inky-fx-wink { top: 22%; left: 8%; animation: inky-fx-sparkle 1.4s ease-out both; }
+.inky-fx-wink-bubble { top: -6%; right: -4%; animation: inky-fx-sparkle 1.4s ease-out 0.15s both; }
+.inky-fx-note { animation: inky-fx-float 2s ease-out both; }
+.inky-fx-note-1 { top: 10%; left: -6%; }
+.inky-fx-note-2 { top: 4%; right: -6%; animation-delay: 0.5s; }
+.inky-fx-confetti { top: 35%; left: 42%; animation: inky-fx-burst 1.8s ease-out both; }
+.inky-fx-c1 { --fx-x: -170%; --fx-y: -150%; }
+.inky-fx-c2 { --fx-x: 170%; --fx-y: -170%; animation-delay: 0.1s; }
+.inky-fx-c3 { --fx-x: -200%; --fx-y: -20%; animation-delay: 0.2s; }
+.inky-fx-c4 { --fx-x: 200%; --fx-y: -40%; animation-delay: 0.3s; }
+.inky-fx-dust { bottom: -4%; left: 38%; animation: inky-fx-dust 1.6s ease-out both; }
+
+@keyframes inky-fx-wave {
+  0% { opacity: 0; transform: rotate(0); }
+  10% { opacity: 1; }
+  20%, 50%, 80% { transform: rotate(-25deg); }
+  35%, 65% { transform: rotate(20deg); }
+  90% { opacity: 1; }
+  100% { opacity: 0; transform: rotate(0); }
+}
+@keyframes inky-fx-sparkle {
+  0% { opacity: 0; transform: scale(0.3); }
+  30% { opacity: 1; transform: scale(1.2); }
+  70% { opacity: 1; transform: scale(1); }
+  100% { opacity: 0; transform: scale(0.8); }
+}
+@keyframes inky-fx-float {
+  0% { opacity: 0; transform: translateY(20%); }
+  25% { opacity: 1; }
+  100% { opacity: 0; transform: translateY(-120%); }
+}
+@keyframes inky-fx-burst {
+  0% { opacity: 0; transform: translate(0, 0) scale(0.4); }
+  25% { opacity: 1; }
+  70% { opacity: 1; transform: translate(var(--fx-x), var(--fx-y)) scale(1.1) rotate(25deg); }
+  100% { opacity: 0; transform: translate(var(--fx-x), calc(var(--fx-y) + 60%)) scale(0.9); }
+}
+@keyframes inky-fx-dust {
+  0%, 10% { opacity: 0; transform: scale(0.5); }
+  20% { opacity: 1; transform: scale(1.2); }
+  45% { opacity: 0; transform: scale(1.4) translateY(10%); }
+  80% { opacity: 0; transform: scale(0.5); }
+  88% { opacity: 1; transform: scale(1.1); }
+  100% { opacity: 0; transform: scale(1.3); }
+}
 
 /* Respect motion preferences — important for ADHD-friendly, low-distraction UI */
 @media (prefers-reduced-motion: reduce) {

@@ -7,6 +7,7 @@ import {
   getUserProgressList,
   getUserAttemptsList,
   updateUserStats,
+  saveLocalUser,
   saveAttempt,
   logoutStudent,
   fetchExamDataFromSupabase,
@@ -67,6 +68,10 @@ import { RoleSelectionModal } from './features/auth/RoleSelectionModal';
 import { BattleLobbyModal } from './features/dashboard/BattleLobbyModal';
 import { AchievementsModal } from './features/profile/AchievementsModal';
 import { SocialAndLeaderboardModal } from './features/dashboard/SocialAndLeaderboardModal';
+
+// Inky Shop / My Inky — spend coins on Inky animations.
+import { InkyShopModal } from './features/inky/InkyShopModal';
+import { fetchInkyState } from './features/inky/inkyShop';
 
 const THEME_STORAGE_KEY = 'eduquest_theme';
 
@@ -200,6 +205,33 @@ export default function App() {
   const [isBattleOpen, setIsBattleOpen] = useState(false);
   const [isAchievementsOpen, setIsAchievementsOpen] = useState(false);
   const [isSocialOpen, setIsSocialOpen] = useState(false);
+  const [isInkyShopOpen, setIsInkyShopOpen] = useState(false);
+  const [inkyEquipped, setInkyEquipped] = useState<string | null>(null);
+
+  // Equipped Inky animation is stored server-side; load it per login so the
+  // result screens can play it.
+  useEffect(() => {
+    setInkyEquipped(null);
+    if (!user?.id || (user.role && user.role !== 'student')) return;
+    let cancelled = false;
+    fetchInkyState()
+      .then((s) => !cancelled && setInkyEquipped(s.equipped))
+      .catch(() => {});
+    return () => {
+      cancelled = true;
+    };
+  }, [user?.id, user?.role]);
+
+  // Coins changed on the server (Inky Shop) — mirror it locally without
+  // writing back to the DB.
+  const handleServerCoinChange = (coin: number) => {
+    setUser((u) => {
+      if (!u || u.coin === coin) return u;
+      const updated = { ...u, coin };
+      saveLocalUser(updated);
+      return updated;
+    });
+  };
 
   // Check and restore active Supabase / local session on initial load
   useEffect(() => {
@@ -669,6 +701,7 @@ export default function App() {
         onToggleMute={handleToggleMute}
         onOpenAuth={() => setIsAuthOpen(true)}
         onOpenProfile={() => setIsProfileOpen(true)}
+        onOpenInkyShop={() => setIsInkyShopOpen(true)}
         onLogout={handleLogout}
         onGoHome={() => setView('dashboard')}
         isDarkMode={isDarkMode}
@@ -753,6 +786,7 @@ export default function App() {
             coinsEarned={uasaPracticeResult.coinsEarned}
             xpEarned={uasaPracticeResult.xpEarned}
             chapterName={uasaChapter?.name || ''}
+            inkyAnimation={inkyEquipped}
             onRetry={() => setView('uasa-entry')}
             onGoDashboard={() => setView('dashboard')}
           />
@@ -891,6 +925,23 @@ export default function App() {
           }}
           onLogout={handleLogout}
           onUserUpdate={(updated) => setUser(updated)}
+          onOpenInkyShop={() => {
+            setIsProfileOpen(false);
+            setIsInkyShopOpen(true);
+          }}
+        />
+      )}
+
+      {/* Inky Shop / My Inky */}
+      {user && (
+        <InkyShopModal
+          isOpen={isInkyShopOpen}
+          onClose={() => {
+            setIsInkyShopOpen(false);
+            setActiveNavTab('home');
+          }}
+          onCoinChange={handleServerCoinChange}
+          onEquippedChange={setInkyEquipped}
         />
       )}
 

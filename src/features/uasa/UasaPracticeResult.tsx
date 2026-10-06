@@ -1,5 +1,6 @@
 import React from 'react';
-import { Star, Coins, Sparkles, Home, RotateCcw } from 'lucide-react';
+import { Coins, Sparkles, Home, RotateCcw } from 'lucide-react';
+import { InkyAvatar } from '../inky/InkyAvatar';
 
 interface UasaPracticeResultProps {
   score: number;
@@ -8,6 +9,8 @@ interface UasaPracticeResultProps {
   coinsEarned: number;
   xpEarned: number;
   chapterName: string;
+  // Equipped Inky Shop animation (null = Inky just bobs).
+  inkyAnimation?: string | null;
   onRetry: () => void;
   onGoDashboard: () => void;
 }
@@ -19,15 +22,14 @@ export const UasaPracticeResult: React.FC<UasaPracticeResultProps> = ({
   coinsEarned,
   xpEarned,
   chapterName,
+  inkyAnimation,
   onRetry,
   onGoDashboard,
 }) => {
   return (
     <div className="max-w-xl mx-auto space-y-6 pb-12">
       <div className="bg-cream-50 border border-sand-200 rounded-3xl p-8 text-center space-y-4">
-        <div className="w-16 h-16 mx-auto rounded-2xl bg-sage-100 flex items-center justify-center text-sage-600">
-          <Star className="w-8 h-8" />
-        </div>
+        <InkyAvatar animation={inkyAnimation} idle className="w-24 h-24 mx-auto" />
         <h2 className="text-xl font-display font-bold text-ink-900">Latihan Selesai!</h2>
         <p className="text-xs text-ink-500">{chapterName}</p>
         <div className="text-5xl font-display font-bold text-mist-600">{percent}%</div>

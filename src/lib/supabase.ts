@@ -805,6 +805,12 @@ export async function checkAndRestoreSession(): Promise<UserProfile | null> {
   return null;
 }
 
+// Caches the active user locally only — for values the server already
+// changed itself (e.g. coins spent in the Inky Shop).
+export function saveLocalUser(user: UserProfile) {
+  localStorage.setItem(LOCAL_USER_KEY, JSON.stringify(user));
+}
+
 export async function updateUserStats(user: UserProfile, coinAdd: number, xpAdd: number): Promise<UserProfile> {
   let newXp = user.xp + xpAdd;
   let newLevel = user.level;

@@ -9,6 +9,7 @@ interface HeaderProps {
   onToggleMute: () => void;
   onOpenAuth: () => void;
   onOpenProfile: () => void;
+  onOpenInkyShop?: () => void;
   onLogout: () => void;
   onGoHome: () => void;
   isDarkMode: boolean;
@@ -21,6 +22,7 @@ export const Header: React.FC<HeaderProps> = ({
   onToggleMute,
   onOpenAuth,
   onOpenProfile,
+  onOpenInkyShop,
   onLogout,
   onGoHome,
   isDarkMode,
@@ -104,10 +106,24 @@ export const Header: React.FC<HeaderProps> = ({
               </span>
             </button>
 
-            <div className="flex items-center gap-1 bg-honey-100 px-2 sm:px-2.5 py-0.5 rounded-xl text-honey-500 font-bold text-xs sm:text-sm">
-              <Coins className="w-4 h-4 shrink-0" />
-              <span>{user.coin}</span>
-            </div>
+            {onOpenInkyShop && (!user.role || user.role === 'student') ? (
+              <button
+                onClick={() => {
+                  soundManager.playClick();
+                  onOpenInkyShop();
+                }}
+                className="flex items-center gap-1 bg-honey-100 hover:bg-honey-200 px-2 sm:px-2.5 py-0.5 rounded-xl text-honey-500 font-bold text-xs sm:text-sm transition-colors"
+                title="Inky Shop"
+              >
+                <Coins className="w-4 h-4 shrink-0" />
+                <span>{user.coin}</span>
+              </button>
+            ) : (
+              <div className="flex items-center gap-1 bg-honey-100 px-2 sm:px-2.5 py-0.5 rounded-xl text-honey-500 font-bold text-xs sm:text-sm">
+                <Coins className="w-4 h-4 shrink-0" />
+                <span>{user.coin}</span>
+              </div>
+            )}
 
             <div className="flex items-center gap-1 bg-clay-100 px-2 sm:px-2.5 py-0.5 rounded-xl text-clay-500 font-bold text-xs sm:text-sm">
               <Flame className="w-4 h-4 shrink-0" />
