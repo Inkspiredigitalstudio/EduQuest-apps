@@ -1,6 +1,7 @@
 import React from 'react';
 import { Coins, Sparkles, Home, RotateCcw } from 'lucide-react';
 import { InkyAvatar } from '../inky/InkyAvatar';
+import { FULL_REWARD_RUNS_PER_DAY } from '../../lib/rewards';
 
 interface UasaPracticeResultProps {
   score: number;
@@ -8,6 +9,7 @@ interface UasaPracticeResultProps {
   percent: number;
   coinsEarned: number;
   xpEarned: number;
+  coinsCapped?: boolean;
   chapterName: string;
   // Equipped Inky Shop animation (null = Inky just bobs).
   inkyAnimation?: string | null;
@@ -21,6 +23,7 @@ export const UasaPracticeResult: React.FC<UasaPracticeResultProps> = ({
   percent,
   coinsEarned,
   xpEarned,
+  coinsCapped,
   chapterName,
   inkyAnimation,
   onRetry,
@@ -45,6 +48,12 @@ export const UasaPracticeResult: React.FC<UasaPracticeResultProps> = ({
             <span>+{xpEarned} XP</span>
           </div>
         </div>
+
+        {coinsCapped && (
+          <p className="text-xs font-bold text-honey-500 bg-honey-100 rounded-2xl px-4 py-3">
+            Koin bab ini sudah penuh untuk hari ini ({FULL_REWARD_RUNS_PER_DAY} kali). Cuba bab lain untuk kumpul Koin lagi — XP tetap dikira!
+          </p>
+        )}
       </div>
 
       <div className="flex gap-3">

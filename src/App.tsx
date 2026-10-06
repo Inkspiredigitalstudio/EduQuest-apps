@@ -72,6 +72,7 @@ import { SocialAndLeaderboardModal } from './features/dashboard/SocialAndLeaderb
 // Inky Shop / My Inky — spend coins on Inky animations.
 import { InkyShopModal } from './features/inky/InkyShopModal';
 import { fetchInkyState } from './features/inky/inkyShop';
+import { claimPracticeRun } from './lib/rewards';
 
 const THEME_STORAGE_KEY = 'eduquest_theme';
 
@@ -143,6 +144,7 @@ export default function App() {
     coinsEarned: number;
     xpEarned: number;
     answersMap: Record<string, string>;
+    coinsCapped?: boolean;
   } | null>(null);
 
   // Data collections (SPPIM)
@@ -177,6 +179,7 @@ export default function App() {
     percent: number;
     coinsEarned: number;
     xpEarned: number;
+    coinsCapped?: boolean;
   } | null>(null);
   const [uasaExamData, setUasaExamData] = useState<UasaStartExamResult | null>(null);
   const [uasaExamResult, setUasaExamResult] = useState<UasaFinishExamResult | null>(null);
@@ -209,13 +212,18 @@ export default function App() {
   const [inkyEquipped, setInkyEquipped] = useState<string | null>(null);
 
   // Equipped Inky animation is stored server-side; load it per login so the
-  // result screens can play it.
+  // result screens can play it. Also refresh the coin balance: the cached
+  // local copy can be stale (purchases/corrections made elsewhere).
   useEffect(() => {
     setInkyEquipped(null);
     if (!user?.id || (user.role && user.role !== 'student')) return;
     let cancelled = false;
     fetchInkyState()
-      .then((s) => !cancelled && setInkyEquipped(s.equipped))
+      .then((s) => {
+        if (cancelled) return;
+        setInkyEquipped(s.equipped);
+        handleServerCoinChange(s.coin);
+      })
       .catch(() => {});
     return () => {
       cancelled = true;
@@ -346,6 +354,9 @@ export default function App() {
   ) => {
     if (!activeSection || !user) return;
 
+    const coinsCapped = !claimPracticeRun(user.id, `sppim:${activeSection.id}`);
+    if (coinsCapped) coinsEarned = 0;
+
     await saveAttempt({
       user_id: user.id,
       section_id: activeSection.id,
@@ -374,7 +385,7 @@ export default function App() {
       })
     );
 
-    setLastExamResult({ score, total, coinsEarned, xpEarned, answersMap });
+    setLastExamResult({ score, total, coinsEarned, xpEarned, answersMap, coinsCapped });
     setView('result');
   };
 
@@ -607,6 +618,9 @@ export default function App() {
   ) => {
     if (!user || !uasaYear || !uasaSubject || !uasaChapter) return;
 
+    const coinsCapped = !claimPracticeRun(user.id, `uasa:${uasaChapter.id}`);
+    if (coinsCapped) coinsEarned = 0;
+
     const { percent } = await saveUasaPracticeAttempt({
       user_id: user.id,
       year: uasaYear,
@@ -617,7 +631,7 @@ export default function App() {
 
     const updatedUser = await updateUserStats(user, coinsEarned, xpEarned);
     setUser(updatedUser);
-    setUasaPracticeResult({ score, total, percent, coinsEarned, xpEarned });
+    setUasaPracticeResult({ score, total, percent, coinsEarned, xpEarned, coinsCapped });
     setView('uasa-practice-result');
   };
 
@@ -786,6 +800,7 @@ export default function App() {
             percent={uasaPracticeResult.percent}
             coinsEarned={uasaPracticeResult.coinsEarned}
             xpEarned={uasaPracticeResult.xpEarned}
+            coinsCapped={uasaPracticeResult.coinsCapped}
             chapterName={uasaChapter?.name || ''}
             inkyAnimation={inkyEquipped}
             onRetry={() => setView('uasa-entry')}
@@ -872,6 +887,7 @@ export default function App() {
             total={lastExamResult.total}
             coinsEarned={lastExamResult.coinsEarned}
             xpEarned={lastExamResult.xpEarned}
+            coinsCapped={lastExamResult.coinsCapped}
             answersMap={lastExamResult.answersMap}
             user={user}
             subject={activeSubject}

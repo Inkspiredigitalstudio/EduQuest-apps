@@ -827,25 +827,24 @@ export async function updateUserStats(user: UserProfile, coinAdd: number, xpAdd:
     level: newLevel,
   };
 
-  localStorage.setItem(LOCAL_USER_KEY, JSON.stringify(updated));
-
+  // Add the reward on the server (add_user_stats RPC) and take its totals.
+  // Writing user.coin + coinAdd as an absolute value let a stale cached
+  // balance on one device overwrite purchases / corrections made elsewhere.
   if (isSupabaseConfigured && supabase && user.id) {
-    (async () => {
-      try {
-        await supabase
-          .from('users')
-          .update({
-            coin: updated.coin,
-            xp: updated.xp,
-            level: updated.level,
-          })
-          .eq('id', user.id);
-      } catch (err) {
-        console.warn('Failed sync stats to Supabase:', err);
+    try {
+      const { data, error } = await supabase.rpc('add_user_stats', { p_coin: coinAdd, p_xp: xpAdd });
+      if (!error && data?.ok) {
+        const synced: UserProfile = { ...updated, coin: data.coin, xp: data.xp, level: data.level };
+        localStorage.setItem(LOCAL_USER_KEY, JSON.stringify(synced));
+        return synced;
       }
-    })();
+      console.warn('Failed sync stats to Supabase:', error || data?.code);
+    } catch (err) {
+      console.warn('Failed sync stats to Supabase:', err);
+    }
   }
 
+  localStorage.setItem(LOCAL_USER_KEY, JSON.stringify(updated));
   return updated;
 }
 

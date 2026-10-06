@@ -3,6 +3,7 @@ import confetti from 'canvas-confetti';
 import { Section, Question, UserProfile, Subject, Paper, UserProgress } from '../../types';
 import { soundManager } from '../../lib/audio';
 import { Trophy, Coins, Award, CheckCircle2, XCircle, RotateCcw, Home, BookOpen, Send, Phone, MessageSquare, ChevronDown, ChevronUp, ArrowLeft, ArrowRight, Sparkles } from 'lucide-react';
+import { FULL_REWARD_RUNS_PER_DAY } from '../../lib/rewards';
 
 interface ResultScreenProps {
   section: Section;
@@ -12,6 +13,7 @@ interface ResultScreenProps {
   coinsEarned: number;
   xpEarned: number;
   answersMap: Record<string, string>;
+  coinsCapped?: boolean;
   user?: UserProfile | null;
   subject?: Subject | null;
   paper?: Paper | null;
@@ -31,6 +33,7 @@ export const ResultScreen: React.FC<ResultScreenProps> = ({
   coinsEarned,
   xpEarned,
   answersMap,
+  coinsCapped,
   user,
   subject,
   paper,
@@ -195,6 +198,12 @@ Untuk tengok progress ${studentName} lagi lanjut, boleh ke EduQuest App.`;
           <div className="text-2xl font-display font-bold text-mist-600">+{xpEarned} XP</div>
         </div>
       </div>
+
+      {coinsCapped && (
+        <p className="text-xs font-bold text-honey-500 bg-honey-100 border border-honey-200 rounded-2xl px-4 py-3 text-center">
+          Koin bab ini sudah penuh untuk hari ini ({FULL_REWARD_RUNS_PER_DAY} kali). Cuba bab lain untuk kumpul Koin lagi — XP tetap dikira!
+        </p>
+      )}
 
       {/* WhatsApp Share Card for Parents */}
       <div className="bg-sage-100 border border-sage-200 rounded-3xl p-5 space-y-4">

@@ -228,8 +228,12 @@ export const ExamScreen: React.FC<ExamScreenProps> = ({
         setLoadingPercent(100);
         setLoadingText('Sedia! Memaparkan keputusan...');
 
+        // Completion bonus scales with the number of questions. It used to be a
+        // flat 150 (+100 for full marks), so repeating a 4-question chapter
+        // paid far more per minute than real practice — one student farmed
+        // 50,000+ coins that way.
         const isFullMarks = score === questions.length;
-        const sectionBonusCoins = 150 + (isFullMarks ? 100 : 0);
+        const sectionBonusCoins = questions.length * 5 + (isFullMarks ? questions.length * 5 : 0);
         const totalCoinsGained = coinsEarned + sectionBonusCoins;
         const totalXpGained = score * 20 + 50;
 
