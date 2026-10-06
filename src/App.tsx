@@ -8,6 +8,8 @@ import {
   getUserAttemptsList,
   updateUserStats,
   saveLocalUser,
+  claimPracticeReward,
+  syncPracticeRecords,
   saveAttempt,
   logoutStudent,
   fetchExamDataFromSupabase,
@@ -73,7 +75,6 @@ import { SocialAndLeaderboardModal } from './features/dashboard/SocialAndLeaderb
 import { InkyShopModal } from './features/inky/InkyShopModal';
 import { fetchInkyState } from './features/inky/inkyShop';
 import { InkyWornContext } from './features/inky/inkyAccessories';
-import { claimPracticeRun } from './lib/rewards';
 
 const THEME_STORAGE_KEY = 'eduquest_theme';
 
@@ -229,6 +230,14 @@ export default function App() {
         handleServerCoinChange(s.coin);
       })
       .catch(() => {});
+    // Upload practice records still sitting only on this device, and pull in
+    // ones made on other devices.
+    const userId = user.id;
+    syncPracticeRecords(userId)
+      .then(() => {
+        if (!cancelled) setUserProgress(getUserProgressList(userId));
+      })
+      .catch((e) => console.warn('Practice record sync failed:', e));
     return () => {
       cancelled = true;
     };
@@ -358,8 +367,10 @@ export default function App() {
   ) => {
     if (!activeSection || !user) return;
 
-    const coinsCapped = !claimPracticeRun(user.id, `sppim:${activeSection.id}`);
-    if (coinsCapped) coinsEarned = 0;
+    const reward = await claimPracticeReward(user, `sppim:${activeSection.id}`, coinsEarned, xpEarned);
+    const coinsCapped = reward.capped;
+    coinsEarned = reward.coinsAwarded;
+    setUser(reward.user);
 
     await saveAttempt({
       user_id: user.id,
@@ -371,9 +382,6 @@ export default function App() {
       started_at: new Date(Date.now() - 300000).toISOString(),
       completed_at: new Date().toISOString(),
     });
-
-    const updatedUser = await updateUserStats(user, coinsEarned, xpEarned);
-    setUser(updatedUser);
 
     setUserProgress(getUserProgressList(user.id));
 
@@ -622,9 +630,6 @@ export default function App() {
   ) => {
     if (!user || !uasaYear || !uasaSubject || !uasaChapter) return;
 
-    const coinsCapped = !claimPracticeRun(user.id, `uasa:${uasaChapter.id}`);
-    if (coinsCapped) coinsEarned = 0;
-
     const { percent } = await saveUasaPracticeAttempt({
       user_id: user.id,
       year: uasaYear,
@@ -633,9 +638,9 @@ export default function App() {
       answers: Object.entries(answersMap).map(([question_id, choice_id]) => ({ question_id, choice_id })),
     });
 
-    const updatedUser = await updateUserStats(user, coinsEarned, xpEarned);
-    setUser(updatedUser);
-    setUasaPracticeResult({ score, total, percent, coinsEarned, xpEarned, coinsCapped });
+    const reward = await claimPracticeReward(user, `uasa:${uasaChapter.id}`, coinsEarned, xpEarned);
+    setUser(reward.user);
+    setUasaPracticeResult({ score, total, percent, coinsEarned: reward.coinsAwarded, xpEarned, coinsCapped: reward.capped });
     setView('uasa-practice-result');
   };
 

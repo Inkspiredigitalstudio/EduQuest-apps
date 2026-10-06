@@ -1,4 +1,5 @@
 import { createClient, SupabaseClient } from '@supabase/supabase-js';
+import { claimPracticeRun } from './rewards';
 import { UserProfile, UserProgress, UserAttempt, Subject, Paper, Section, Question, Choice, StudentLink, FriendRequest, BattleRoom, Achievement } from '../types';
 
 const supabaseUrl = (import.meta.env.VITE_SUPABASE_URL || '').trim();
@@ -848,6 +849,37 @@ export async function updateUserStats(user: UserProfile, coinAdd: number, xpAdd:
   return updated;
 }
 
+// Practice rewards go through claim_practice_reward, which also enforces the
+// daily cap on the server (only the first 3 completions of a chapter per day
+// pay coins; XP always counts). Offline, fall back to the on-device cap.
+export async function claimPracticeReward(
+  user: UserProfile,
+  chapterKey: string,
+  coinAdd: number,
+  xpAdd: number
+): Promise<{ user: UserProfile; coinsAwarded: number; capped: boolean }> {
+  if (isSupabaseConfigured && supabase && user.id) {
+    try {
+      const { data, error } = await supabase.rpc('claim_practice_reward', {
+        p_chapter_key: chapterKey,
+        p_coin: coinAdd,
+        p_xp: xpAdd,
+      });
+      if (!error && data?.ok) {
+        const synced: UserProfile = { ...user, coin: data.coin, xp: data.xp, level: data.level };
+        saveLocalUser(synced);
+        return { user: synced, coinsAwarded: data.coin_added, capped: data.capped };
+      }
+      console.warn('claim_practice_reward failed, using on-device cap:', error || data?.code);
+    } catch (err) {
+      console.warn('claim_practice_reward failed, using on-device cap:', err);
+    }
+  }
+  const capped = !claimPracticeRun(user.id, chapterKey);
+  const coinsAwarded = capped ? 0 : coinAdd;
+  return { user: await updateUserStats(user, coinsAwarded, xpAdd), coinsAwarded, capped };
+}
+
 export async function saveAttempt(attempt: Omit<UserAttempt, 'id'>) {
   const newAttempt: UserAttempt = {
     ...attempt,
@@ -878,22 +910,21 @@ export async function saveAttempt(attempt: Omit<UserAttempt, 'id'>) {
   }
   localStorage.setItem(LOCAL_PROGRESS_KEY, JSON.stringify(existingProgress));
 
-  // Remote Supabase sync in background without blocking UI
-  if (isSupabaseConfigured && supabase) {
+  // Remote save in the background. The local id doubles as client_id so a
+  // later syncPracticeRecords() never uploads the same attempt twice.
+  const savedProgress = existingProgress.find((p) => p.section_id === attempt.section_id && p.user_id === attempt.user_id);
+  if (isSupabaseConfigured && supabase && UUID_RE.test(attempt.section_id)) {
     (async () => {
       try {
-        await Promise.all([
-          supabase.from('attempts').insert([newAttempt]),
-          supabase.from('progress').upsert([
-            {
-              user_id: attempt.user_id,
-              section_id: attempt.section_id,
-              best_score: attempt.score,
-              is_completed: true,
-              total_questions: attempt.total_question,
-            },
-          ]),
+        const [attemptRes, progressRes] = await Promise.all([
+          supabase.from('attempts').upsert([toAttemptRow(newAttempt)], { onConflict: 'client_id', ignoreDuplicates: true }),
+          supabase.from('progress').upsert([toProgressRow(savedProgress!)], { onConflict: 'user_id,section_id' }),
         ]);
+        if (attemptRes.error || progressRes.error) {
+          console.warn('Sync attempt to Supabase failed:', attemptRes.error || progressRes.error);
+        } else {
+          markAttemptsSynced([newAttempt.id]);
+        }
       } catch (err) {
         console.warn('Sync attempt to Supabase failed:', err);
       }
@@ -901,6 +932,150 @@ export async function saveAttempt(attempt: Omit<UserAttempt, 'id'>) {
   }
 
   return newAttempt;
+}
+
+// ---------------- PRACTICE RECORD SYNC ----------------
+// SPPIM attempts/progress used to stay on the device only (every server write
+// failed on a schema mismatch). syncPracticeRecords() uploads whatever this
+// device still holds for the user, then merges the server's records back so
+// history and best scores follow the student to any device.
+const LOCAL_SYNCED_ATTEMPTS_KEY = 'sppim_synced_attempt_ids';
+const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+
+function toAttemptRow(a: UserAttempt) {
+  return {
+    client_id: a.id,
+    user_id: a.user_id,
+    section_id: a.section_id,
+    score: a.score,
+    total_question: a.total_question,
+    coins_earned: a.coins_earned ?? 0,
+    xp_earned: a.xp_earned ?? 0,
+    started_at: a.started_at,
+    completed_at: a.completed_at,
+  };
+}
+
+function toProgressRow(p: UserProgress) {
+  return {
+    user_id: p.user_id,
+    section_id: p.section_id,
+    best_score: p.best_score,
+    is_completed: p.is_completed,
+    total_questions: p.total_questions ?? 0,
+  };
+}
+
+function readSyncedAttemptIds(): Set<string> {
+  try {
+    return new Set(JSON.parse(localStorage.getItem(LOCAL_SYNCED_ATTEMPTS_KEY) || '[]'));
+  } catch {
+    return new Set();
+  }
+}
+
+function markAttemptsSynced(ids: string[]) {
+  const synced = readSyncedAttemptIds();
+  ids.forEach((id) => synced.add(id));
+  localStorage.setItem(LOCAL_SYNCED_ATTEMPTS_KEY, JSON.stringify([...synced]));
+}
+
+export async function syncPracticeRecords(userId: string): Promise<{ uploaded: number; downloaded: number }> {
+  if (!isSupabaseConfigured || !supabase || !UUID_RE.test(userId)) return { uploaded: 0, downloaded: 0 };
+
+  const allAttempts: UserAttempt[] = JSON.parse(localStorage.getItem(LOCAL_ATTEMPTS_KEY) || '[]');
+  const allProgress: UserProgress[] = JSON.parse(localStorage.getItem(LOCAL_PROGRESS_KEY) || '[]');
+
+  // 1. Upload attempts this device never managed to send.
+  const synced = readSyncedAttemptIds();
+  const pending = allAttempts.filter((a) => a.user_id === userId && !synced.has(a.id) && UUID_RE.test(a.section_id));
+  let uploaded = 0;
+  if (pending.length > 0) {
+    const { error } = await supabase
+      .from('attempts')
+      .upsert(pending.map(toAttemptRow), { onConflict: 'client_id', ignoreDuplicates: true });
+    if (error) {
+      console.warn('Uploading device attempts failed:', error);
+    } else {
+      markAttemptsSynced(pending.map((a) => a.id));
+      uploaded = pending.length;
+    }
+  }
+
+  // 2. Progress: keep the best score from either side, then write back both ways.
+  const { data: serverProgress, error: progErr } = await supabase
+    .from('progress')
+    .select('section_id, best_score, is_completed, total_questions')
+    .eq('user_id', userId);
+  if (!progErr) {
+    const merged = new Map<string, UserProgress>();
+    (serverProgress || []).forEach((row: any) =>
+      merged.set(row.section_id, {
+        id: `prog-${row.section_id}`,
+        user_id: userId,
+        section_id: row.section_id,
+        best_score: row.best_score ?? 0,
+        is_completed: !!row.is_completed,
+        total_questions: row.total_questions ?? 0,
+      })
+    );
+    const toUpload: UserProgress[] = [];
+    allProgress
+      .filter((p) => p.user_id === userId && UUID_RE.test(p.section_id))
+      .forEach((p) => {
+        const server = merged.get(p.section_id);
+        if (!server || p.best_score > server.best_score || (p.is_completed && !server.is_completed)) {
+          const best: UserProgress = {
+            ...p,
+            best_score: Math.max(p.best_score, server?.best_score ?? 0),
+            is_completed: p.is_completed || !!server?.is_completed,
+            total_questions: p.total_questions || server?.total_questions || 0,
+          };
+          merged.set(p.section_id, best);
+          toUpload.push(best);
+        }
+      });
+    if (toUpload.length > 0) {
+      const { error } = await supabase.from('progress').upsert(toUpload.map(toProgressRow), { onConflict: 'user_id,section_id' });
+      if (error) console.warn('Uploading device progress failed:', error);
+    }
+    // Keep other users' rows and any offline-only (non-uuid) sections as-is.
+    const keep = allProgress.filter((p) => p.user_id !== userId || !UUID_RE.test(p.section_id));
+    localStorage.setItem(LOCAL_PROGRESS_KEY, JSON.stringify([...keep, ...merged.values()]));
+  }
+
+  // 3. Bring attempts made on other devices onto this one (achievements and
+  //    history read the local list).
+  let downloaded = 0;
+  const { data: serverAttempts, error: attErr } = await supabase
+    .from('attempts')
+    .select('id, client_id, section_id, score, total_question, coins_earned, xp_earned, started_at, completed_at')
+    .eq('user_id', userId)
+    .order('completed_at', { ascending: false })
+    .limit(1000);
+  if (!attErr && serverAttempts) {
+    const localIds = new Set(allAttempts.map((a) => a.id));
+    const missing: UserAttempt[] = serverAttempts
+      .filter((row: any) => !localIds.has(row.client_id || row.id))
+      .map((row: any) => ({
+        id: row.client_id || row.id,
+        user_id: userId,
+        section_id: row.section_id,
+        score: row.score,
+        total_question: row.total_question,
+        coins_earned: row.coins_earned ?? 0,
+        xp_earned: row.xp_earned ?? 0,
+        started_at: row.started_at,
+        completed_at: row.completed_at,
+      }));
+    if (missing.length > 0) {
+      localStorage.setItem(LOCAL_ATTEMPTS_KEY, JSON.stringify([...allAttempts, ...missing]));
+      markAttemptsSynced(missing.map((a) => a.id));
+      downloaded = missing.length;
+    }
+  }
+
+  return { uploaded, downloaded };
 }
 
 export function getUserProgressList(userId: string): UserProgress[] {

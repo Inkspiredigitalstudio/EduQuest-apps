@@ -1,10 +1,10 @@
-// Daily cap on coin rewards for repeating the same practice chapter/section.
-// XP is unaffected — repeating still counts as learning — but only the first
-// FULL_REWARD_RUNS_PER_DAY completions of one chapter per day pay coins, so
-// students move on to other chapters instead of farming one.
+// Daily cap on practice coin rewards: only the first FULL_REWARD_RUNS_PER_DAY
+// completions of one chapter per day pay coins (XP always counts), so
+// students move on instead of farming one chapter.
 //
-// Stored on this device only, like the rest of the coin flow today (coins are
-// awarded client-side); good enough to stop accidental/naive farming.
+// The real cap is enforced in Supabase (claim_practice_reward). This
+// on-device copy is only the fallback when that call can't be made
+// (offline / no session).
 
 const STORAGE_KEY = 'eduquest_practice_reward_runs';
 export const FULL_REWARD_RUNS_PER_DAY = 3;
