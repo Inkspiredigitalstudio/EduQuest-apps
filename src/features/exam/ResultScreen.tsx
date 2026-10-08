@@ -145,11 +145,11 @@ export const ResultScreen: React.FC<ResultScreenProps> = ({
   }
 
   const studentName = user?.name || 'Pelajar';
-  const subjectTitle = subject?.title || 'Latihan EduQuest';
+  const subjectTitle = subject?.title || 'Latihan Inky EduQuest';
 
   const waMessage = `Hi! Sikit update — ${studentName} baru habis latihan ${subjectTitle}, skor ${score}/${total}. Jangan lupa bagi pujian & reward untuk usaha dia ya 😍
 
-Untuk tengok progress ${studentName} lagi lanjut, boleh ke EduQuest App.`;
+Untuk tengok progress ${studentName} lagi lanjut, boleh ke Inky EduQuest.`;
 
   const handleSendWhatsApp = () => {
     soundManager.playClick();

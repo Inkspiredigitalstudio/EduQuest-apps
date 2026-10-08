@@ -108,7 +108,7 @@ export const SocialAndLeaderboardModal: React.FC<SocialAndLeaderboardModalProps>
             </div>
             <div>
               <h2 className="text-xl font-display font-bold text-ink-900">Carta Kedudukan &amp; Rakan</h2>
-              <p className="text-xs text-ink-500">Papan Mata Global dan Rangkaian Rakan EduQuest</p>
+              <p className="text-xs text-ink-500">Papan Mata Global dan Rangkaian Rakan Inky EduQuest</p>
             </div>
           </div>
 

@@ -129,7 +129,7 @@ export const ProfileModal: React.FC<ProfileModalProps> = ({ isOpen, user, progre
 
               <p className="text-xs text-ink-700 font-medium flex items-center justify-center sm:justify-start gap-1">
                 <School className="w-3.5 h-3.5" />
-                <span>Pelajar SPPI &amp; SMKA • EduQuest, Modul SPPIM</span>
+                <span>Pelajar SPPI &amp; SMKA • Inky EduQuest, Modul SPPIM</span>
               </p>
             </div>
           </div>

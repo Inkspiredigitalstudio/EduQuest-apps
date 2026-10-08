@@ -46,7 +46,7 @@ export const Header: React.FC<HeaderProps> = ({
   return (
     <header className="sticky top-0 z-40 bg-cream-50/95 backdrop-blur border-b border-sand-200 text-ink-900 px-3 sm:px-6 py-3">
       <div className="max-w-6xl mx-auto flex items-center justify-between gap-2 sm:gap-4">
-        {/* Brand / Logo — EduQuest is the platform, SPPIM is the active module */}
+        {/* Brand / Logo — Inky EduQuest is the platform, SPPIM is the active module */}
         <button onClick={onGoHome} className="flex items-center gap-2.5 group focus:outline-none shrink-0">
           <div className="w-9 h-9 sm:w-10 sm:h-10 rounded-2xl bg-mist-500 flex items-center justify-center shrink-0">
             <span className="text-lg sm:text-xl font-display font-bold text-white">E</span>
@@ -54,7 +54,7 @@ export const Header: React.FC<HeaderProps> = ({
           <div className="text-left hidden xs:block">
             <div className="flex items-center gap-1.5">
               <span className="text-base sm:text-lg font-display font-bold text-ink-900">
-                EduQuest
+                Inky EduQuest
               </span>
               <span className="text-[9px] font-bold uppercase bg-mist-100 text-mist-600 px-1.5 py-0.5 rounded-md">
                 Modul SPPIM

@@ -193,7 +193,7 @@ export const ParentDashboard: React.FC<ParentDashboardProps> = ({ user, subjects
     const dateStr = new Date().toLocaleDateString('ms-MY', { day: 'numeric', month: 'long', year: 'numeric' });
 
     let message = `Assalamu'alaikum & Salam Sejahtera Ibu/Bapa\n\n`;
-    message += `*LAPORAN PRESTASI KESELURUHAN PELAJAR (EDUQUEST)*\n`;
+    message += `*LAPORAN PRESTASI KESELURUHAN PELAJAR (INKY EDUQUEST)*\n`;
     message += `───────────────────────────────\n`;
     message += `Nama Anak: ${currentChild.name}\n`;
     message += `ID Login: ${currentChild.login_id}\n`;
@@ -212,7 +212,7 @@ export const ParentDashboard: React.FC<ParentDashboardProps> = ({ user, subjects
       message += `Status: Prestasi cemerlang! Anak anda menguasai latihan yang telah dijawab sejauh ini.\n`;
     }
 
-    message += `\nDihantar melalui Portal Ibu Bapa EduQuest.`;
+    message += `\nDihantar melalui Portal Ibu Bapa Inky EduQuest.`;
 
     const url = cleanPhone.length >= 9
       ? `https://wa.me/${cleanPhone}?text=${encodeURIComponent(message)}`
@@ -230,7 +230,7 @@ export const ParentDashboard: React.FC<ParentDashboardProps> = ({ user, subjects
               <Heart className="w-4.5 h-4.5 text-white" />
             </div>
             <div>
-              <span className="text-sm font-display font-bold text-ink-900 block leading-tight">EduQuest</span>
+              <span className="text-sm font-display font-bold text-ink-900 block leading-tight">Inky EduQuest</span>
               <span className="text-[11px] text-ink-500 font-semibold">Portal Ibu Bapa</span>
             </div>
           </div>

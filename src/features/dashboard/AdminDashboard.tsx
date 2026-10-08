@@ -570,7 +570,7 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
             </div>
             <div>
               <div className="flex items-center gap-1.5">
-                <span className="text-sm font-display font-bold text-ink-900 leading-tight">EduQuest</span>
+                <span className="text-sm font-display font-bold text-ink-900 leading-tight">Inky EduQuest</span>
                 <span className="text-[9px] font-bold uppercase bg-mist-100 text-mist-600 px-1.5 py-0.5 rounded-md">Modul SPPIM</span>
               </div>
               <span className="text-[11px] text-ink-500 font-semibold">Admin Dashboard • {user.name}</span>

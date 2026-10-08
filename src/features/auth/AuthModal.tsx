@@ -192,7 +192,7 @@ export const AuthModal: React.FC<AuthModalProps> = ({ isOpen, onClose, onSuccess
           </div>
           <h2 className="text-xl font-display font-bold text-ink-900">Pendaftaran &amp; Log Masuk</h2>
           <p className="text-xs text-ink-500 font-medium mt-1">
-            EduQuest — Modul SPPIM (Pelajar &amp; Ibu Bapa)
+            Inky EduQuest — Modul SPPIM (Pelajar &amp; Ibu Bapa)
           </p>
         </div>
 
