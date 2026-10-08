@@ -47,21 +47,25 @@ export const Header: React.FC<HeaderProps> = ({
     <header className="sticky top-0 z-40 bg-cream-50/95 backdrop-blur border-b border-sand-200 text-ink-900 px-3 sm:px-6 py-3">
       <div className="max-w-6xl mx-auto flex items-center justify-between gap-2 sm:gap-4">
         {/* Brand / Logo — Inky EduQuest is the platform, SPPIM is the active module */}
-        <button onClick={onGoHome} className="flex items-center gap-2.5 group focus:outline-none shrink-0">
-          <div className="w-9 h-9 sm:w-10 sm:h-10 rounded-2xl bg-mist-500 flex items-center justify-center shrink-0">
-            <span className="text-lg sm:text-xl font-display font-bold text-white">E</span>
-          </div>
-          <div className="text-left hidden xs:block">
+        <button onClick={onGoHome} aria-label="Inky EduQuest — halaman utama" className="flex items-center gap-2.5 group focus:outline-none shrink-0">
+          <img
+            src="/icons/icon-192.png"
+            alt=""
+            draggable={false}
+            className="w-9 h-9 sm:w-10 sm:h-10 rounded-2xl shrink-0"
+          />
+          {/* The name needs room: shown when logged out (just the name on phones 360px and wider), and from lg once the stats bar is showing. */}
+          <div className={`text-left ${user ? 'hidden lg:block' : 'hidden min-[360px]:block'}`}>
             <div className="flex items-center gap-1.5">
               <span className="text-base sm:text-lg font-display font-bold text-ink-900">
                 Inky EduQuest
               </span>
-              <span className="text-[9px] font-bold uppercase bg-mist-100 text-mist-600 px-1.5 py-0.5 rounded-md">
+              <span className="hidden sm:inline-block text-[9px] font-bold uppercase bg-mist-100 text-mist-600 px-1.5 py-0.5 rounded-md">
                 Modul SPPIM
               </span>
             </div>
             <div className="flex items-center gap-1.5">
-              <p className="text-[10px] text-ink-500 font-semibold -mt-0.5">Belajar Macam Main Game!</p>
+              <p className="hidden sm:block text-[10px] text-ink-500 font-semibold -mt-0.5">Belajar dan Bermain Bersama Inky!</p>
               {isOffline && (
                 <span className="text-[9px] font-bold bg-honey-100 text-honey-500 px-1.5 py-0.5 rounded-md flex items-center gap-1">
                   <WifiOff className="w-2.5 h-2.5" /> Luar Talian

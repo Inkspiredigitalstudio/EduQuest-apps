@@ -930,7 +930,7 @@ export default function App() {
       <footer className="border-t border-sand-200 bg-cream-50 text-center py-6 pb-20 px-4 text-xs text-ink-500">
         <div className="max-w-7xl mx-auto flex flex-col sm:flex-row items-center justify-between gap-2">
           <span>Inky EduQuest — Learn, Play, Achieve</span>
-          <span>Belajar Macam Main Game!</span>
+          <span>Belajar dan Bermain Bersama Inky!</span>
         </div>
       </footer>
 

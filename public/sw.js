@@ -1,13 +1,13 @@
 importScripts('https://storage.googleapis.com/workbox-cdn/releases/6.5.4/workbox-sw.js');
 
-const CACHE_NAME = 'sppi-quest-v7';
+const CACHE_NAME = 'sppi-quest-v8';
 
 if (self.workbox) {
   console.log('[Workbox] Service Worker loaded successfully.');
 
   workbox.core.setCacheNameDetails({
     prefix: 'sppi-quest',
-    suffix: 'v7',
+    suffix: 'v8',
     precache: 'app-shell',
     runtime: 'runtime',
   });
@@ -23,9 +23,9 @@ if (self.workbox) {
   // the SW. NetworkFirst (route #2 below) already covers page navigations
   // correctly without that trap.
   workbox.precaching.precacheAndRoute([
-    { url: '/manifest.json', revision: 'v7' },
-    { url: '/icons/icon-192.png', revision: 'v7' },
-    { url: '/icons/icon-512.png', revision: 'v7' },
+    { url: '/manifest.json', revision: 'v8' },
+    { url: '/icons/icon-192.png', revision: 'v8' },
+    { url: '/icons/icon-512.png', revision: 'v8' },
   ]);
 
   // 2. Cache HTML/SPA Page Navigations (NetworkFirst -> Cache)
