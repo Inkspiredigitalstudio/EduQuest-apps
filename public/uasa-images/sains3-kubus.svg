@@ -1,0 +1,10 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 400 260" font-family="Arial,Helvetica,sans-serif"><title>Kotak berbentuk kubus</title><rect width="400" height="260" rx="14" fill="#f8fafc"/>
+<g stroke="#1e3a8a" stroke-width="2.5" stroke-linejoin="round">
+<polygon points="120,100 220,100 220,200 120,200" fill="#93c5fd"/>
+<polygon points="120,100 170,60 270,60 220,100" fill="#dbeafe"/>
+<polygon points="220,100 270,60 270,160 220,200" fill="#60a5fa"/></g>
+<g font-size="16" fill="#0f172a" font-weight="bold">
+<text x="170" y="224" text-anchor="middle">2 cm</text>
+<text x="150" y="68" text-anchor="end">2 cm</text>
+<text x="102" y="155" text-anchor="end">2 cm</text></g>
+</svg>

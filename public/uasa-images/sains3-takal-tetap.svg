@@ -1,0 +1,14 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 400 260" font-family="Arial,Helvetica,sans-serif"><title>Takal tetap</title><rect width="400" height="260" rx="14" fill="#f8fafc"/>
+<rect x="90" y="18" width="220" height="14" rx="3" fill="#94a3b8" stroke="#475569" stroke-width="2"/>
+<line x1="200" y1="32" x2="200" y2="62" stroke="#475569" stroke-width="4"/>
+<circle cx="200" cy="82" r="22" fill="#e2e8f0" stroke="#334155" stroke-width="4"/><circle cx="200" cy="82" r="5" fill="#334155"/>
+<path d="M178 82 V210" stroke="#92400e" stroke-width="3.5" fill="none"/>
+<path d="M222 82 V150" stroke="#92400e" stroke-width="3.5" fill="none"/>
+<rect x="150" y="210" width="56" height="30" rx="3" fill="#ea580c" stroke="#9a3412" stroke-width="2.5"/>
+<g stroke="#9a3412" stroke-width="1.3"><line x1="150" y1="220" x2="206" y2="220"/><line x1="150" y1="230" x2="206" y2="230"/><line x1="178" y1="210" x2="178" y2="220"/><line x1="192" y1="220" x2="192" y2="230"/></g>
+<circle cx="222" cy="160" r="9" fill="#fcd9b6" stroke="#9a5b2b" stroke-width="2"/>
+<path d="M250 130 V190" stroke="#16a34a" stroke-width="5" marker-end="url(#d)"/>
+<defs><marker id="d" markerWidth="6" markerHeight="6" refX="3" refY="3" orient="auto"><path d="M0 0 L6 3 L0 6Z" fill="#16a34a"/></marker></defs>
+<text x="262" y="165" font-size="14" font-weight="bold" fill="#166534">Tarikan</text>
+<text x="262" y="182" font-size="14" font-weight="bold" fill="#166534">ke bawah</text>
+</svg>

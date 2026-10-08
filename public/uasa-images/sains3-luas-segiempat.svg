@@ -1,0 +1,10 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 400 260" font-family="Arial,Helvetica,sans-serif"><title>Buku berbentuk segi empat tepat</title><rect width="400" height="260" rx="14" fill="#f8fafc"/>
+<rect x="100" y="55" width="200" height="140" fill="#fde68a" stroke="#b45309" stroke-width="3"/>
+<rect x="100" y="55" width="22" height="140" fill="#f59e0b" stroke="#b45309" stroke-width="3"/>
+<text x="215" y="132" font-size="20" fill="#78350f" text-anchor="middle" font-weight="bold">Buku</text>
+<g stroke="#334155" stroke-width="2" fill="#334155" font-size="16" text-anchor="middle">
+<line x1="100" y1="222" x2="300" y2="222"/><line x1="100" y1="214" x2="100" y2="230"/><line x1="300" y1="214" x2="300" y2="230"/>
+<text x="200" y="246" stroke="none" font-weight="bold">5 cm</text>
+<line x1="326" y1="55" x2="326" y2="195"/><line x1="318" y1="55" x2="334" y2="55"/><line x1="318" y1="195" x2="334" y2="195"/>
+<text x="362" y="131" stroke="none" font-weight="bold">4 cm</text></g>
+</svg>
