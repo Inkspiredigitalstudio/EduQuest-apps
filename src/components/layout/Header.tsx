@@ -77,13 +77,14 @@ export const Header: React.FC<HeaderProps> = ({
 
         {/* Stats Bar */}
         {user ? (
-          <div className="flex items-center gap-1.5 sm:gap-3 bg-cream-100 border border-sand-200 px-2.5 sm:px-4 py-1.5 rounded-2xl">
+          <div className="flex items-center gap-1 sm:gap-3 bg-cream-100 border border-sand-200 px-2 sm:px-4 py-1.5 rounded-2xl">
             <button
               onClick={() => {
                 soundManager.playClick();
                 onOpenProfile();
               }}
-              className="flex items-center gap-2 hover:opacity-75 transition-opacity pr-1.5 sm:pr-2.5 border-r border-sand-300"
+              // The Level button next to it opens the same profile, so phones skip this one to save room.
+              className="hidden sm:flex items-center gap-2 hover:opacity-75 transition-opacity pr-2.5 border-r border-sand-300"
               title="Lihat Profil"
             >
               <div className="w-7 h-7 sm:w-8 sm:h-8 rounded-xl bg-mist-500 text-white font-bold text-xs flex items-center justify-center">
@@ -102,7 +103,7 @@ export const Header: React.FC<HeaderProps> = ({
               className="flex items-center gap-1.5 hover:bg-cream-200 px-1.5 py-0.5 rounded-xl transition-colors"
               title="Level & XP"
             >
-              <span className="bg-mist-500 text-white font-bold text-[11px] px-2 py-0.5 rounded-lg">
+              <span className="bg-mist-500 text-white font-bold text-[11px] px-2 py-0.5 rounded-lg whitespace-nowrap">
                 Lvl {user.level}
               </span>
               <span className="text-xs font-bold text-mist-600 hidden sm:inline">
@@ -116,20 +117,20 @@ export const Header: React.FC<HeaderProps> = ({
                   soundManager.playClick();
                   onOpenInkyShop();
                 }}
-                className="flex items-center gap-1 bg-honey-100 hover:bg-honey-200 px-2 sm:px-2.5 py-0.5 rounded-xl text-honey-500 font-bold text-xs sm:text-sm transition-colors"
+                className="flex items-center gap-1 bg-honey-100 hover:bg-honey-200 px-1.5 sm:px-2.5 py-0.5 rounded-xl text-honey-500 font-bold text-xs sm:text-sm transition-colors whitespace-nowrap"
                 title="Inky Shop"
               >
                 <Coins className="w-4 h-4 shrink-0" />
                 <span>{user.coin}</span>
               </button>
             ) : (
-              <div className="flex items-center gap-1 bg-honey-100 px-2 sm:px-2.5 py-0.5 rounded-xl text-honey-500 font-bold text-xs sm:text-sm">
+              <div className="flex items-center gap-1 bg-honey-100 px-1.5 sm:px-2.5 py-0.5 rounded-xl text-honey-500 font-bold text-xs sm:text-sm whitespace-nowrap">
                 <Coins className="w-4 h-4 shrink-0" />
                 <span>{user.coin}</span>
               </div>
             )}
 
-            <div className="flex items-center gap-1 bg-clay-100 px-2 sm:px-2.5 py-0.5 rounded-xl text-clay-500 font-bold text-xs sm:text-sm">
+            <div className="hidden min-[360px]:flex items-center gap-1 bg-clay-100 px-1.5 sm:px-2.5 py-0.5 rounded-xl text-clay-500 font-bold text-xs sm:text-sm whitespace-nowrap">
               <Flame className="w-4 h-4 shrink-0" />
               <span>{user.streak_days || 1}</span>
             </div>
@@ -147,10 +148,10 @@ export const Header: React.FC<HeaderProps> = ({
         )}
 
         {/* Right Tools */}
-        <div className="flex items-center gap-1.5 shrink-0">
+        <div className="flex items-center gap-1 sm:gap-1.5 shrink-0">
           <button
             onClick={onToggleDarkMode}
-            className="p-2 rounded-xl bg-cream-100 hover:bg-cream-200 text-ink-500 border border-sand-200 transition-colors"
+            className="p-1.5 sm:p-2 rounded-xl bg-cream-100 hover:bg-cream-200 text-ink-500 border border-sand-200 transition-colors"
             title={isDarkMode ? 'Tukar ke Mod Cerah' : 'Tukar ke Mod Gelap'}
           >
             {isDarkMode ? <Sun className="w-4 h-4 text-honey-400" /> : <Moon className="w-4 h-4 text-mist-500" />}
@@ -161,7 +162,7 @@ export const Header: React.FC<HeaderProps> = ({
               onToggleMute();
               soundManager.playClick();
             }}
-            className="p-2 rounded-xl bg-cream-100 hover:bg-cream-200 text-ink-500 border border-sand-200 transition-colors"
+            className="p-1.5 sm:p-2 rounded-xl bg-cream-100 hover:bg-cream-200 text-ink-500 border border-sand-200 transition-colors"
             title={isMuted ? 'Buka Bunyi' : 'Tutup Bunyi'}
           >
             {isMuted ? <VolumeX className="w-4 h-4" /> : <Volume2 className="w-4 h-4 text-mist-500" />}
@@ -173,7 +174,8 @@ export const Header: React.FC<HeaderProps> = ({
                 soundManager.playClick();
                 onLogout();
               }}
-              className="p-2 rounded-xl bg-cream-100 hover:bg-clay-100 hover:text-clay-500 text-ink-500 border border-sand-200 transition-colors"
+              // Phones: Log Keluar lives in the Profil card, which frees room for the stats.
+              className="hidden sm:inline-flex p-2 rounded-xl bg-cream-100 hover:bg-clay-100 hover:text-clay-500 text-ink-500 border border-sand-200 transition-colors"
               title="Log Keluar"
             >
               <LogOut className="w-4 h-4" />
