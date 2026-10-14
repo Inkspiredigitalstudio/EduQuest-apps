@@ -57,6 +57,16 @@
   --color-clay-300: #DD9271;
   --color-clay-400: #C96F4B;
   --color-clay-500: #A8532F;
+
+  /* Soft grape/magenta — "Bold Graduation" accent for PKSK Exam Mode only
+     (Practice Mode reuses mist/blue above). Same soft/low-saturation
+     character as the rest of the palette, never harsh. */
+  --color-grape-100: #EDE1F5;
+  --color-grape-200: #D3B8E8;
+  --color-grape-300: #B98FDB;
+  --color-grape-400: #9A65C7;
+  --color-grape-500: #7C48AC;
+  --color-grape-600: #623A87;
 }
 
 /* Dark mode overrides — same token names, inverted lightness.
@@ -102,6 +112,13 @@
   --color-clay-300: #5C3A30;
   --color-clay-400: #C96F4B;
   --color-clay-500: #DD9271;
+
+  --color-grape-100: #241B2C;
+  --color-grape-200: #2E2138;
+  --color-grape-300: #453056;
+  --color-grape-400: #9A65C7;
+  --color-grape-500: #9A65C7;
+  --color-grape-600: #B98FDB;
 }
 
 html {

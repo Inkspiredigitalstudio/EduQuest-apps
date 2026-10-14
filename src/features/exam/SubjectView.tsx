@@ -11,9 +11,28 @@ interface SubjectViewProps {
   userProgress: UserProgress[];
   onBack: () => void;
   onSelectSection: (paper: Paper, section: Section) => void;
+  // 'pksk' switches to a list-button layout with the grape accent and drops
+  // the "Bahagian {name}" badge (PKSK section names are subject categories
+  // like "Matematik", not exam-paper letters, so that label doubled up with
+  // the title below it — see PKSK v2 restructure doc #2). SPPIM is unaffected
+  // by leaving this unset.
+  module?: 'sppim' | 'pksk';
 }
 
-export const SubjectView: React.FC<SubjectViewProps> = ({ subject, papers, sections, userProgress, onBack, onSelectSection }) => {
+// Strips a leading "Bank " (any case) and a trailing 4-digit year from
+// section/paper names — PKSK content is named things like "Bank Bahasa
+// Melayu 2026" for internal clarity, but neither word should leak into
+// student-facing labels. A title with no "Bank "/year (nothing to strip)
+// passes through unchanged.
+function cleanPkskLabel(text: string): string {
+  return text
+    .replace(/^bank\s+/i, '')
+    .replace(/\s+\d{4}$/, '')
+    .trim();
+}
+
+export const SubjectView: React.FC<SubjectViewProps> = ({ subject, papers, sections, userProgress, onBack, onSelectSection, module = 'sppim' }) => {
+  const isPksk = module === 'pksk';
   // Pre-generated PKSK Exam Sets (see PKSK_Structural_Revision.md #6) are
   // whole papers reserved for the dedicated mixed-exam entry point, not
   // regular per-subject Practice Mode browsing — exclude them here so they
@@ -79,7 +98,7 @@ export const SubjectView: React.FC<SubjectViewProps> = ({ subject, papers, secti
                 }`}
               >
                 <FileText className="w-4 h-4" />
-                <span>{paper.title}</span>
+                <span>{isPksk ? cleanPkskLabel(paper.title) : paper.title}</span>
               </button>
             );
           })}
@@ -89,14 +108,43 @@ export const SubjectView: React.FC<SubjectViewProps> = ({ subject, papers, secti
       {/* Sections List */}
       {currentPaper && (
         <div className="bg-cream-50 border border-sand-200 p-5 rounded-3xl">
-          <h3 className="text-lg font-display font-bold text-ink-900">{currentPaper.title}</h3>
+          <h3 className="text-lg font-display font-bold text-ink-900">{isPksk ? cleanPkskLabel(currentPaper.title) : currentPaper.title}</h3>
           <p className="text-xs text-ink-500 mt-1">Pilih bahagian untuk mula menjawab soalan latihan</p>
 
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mt-4">
+          <div className={isPksk ? 'flex flex-col gap-2.5 max-w-lg mx-auto mt-4' : 'grid grid-cols-1 md:grid-cols-2 gap-4 mt-4'}>
             {paperSections.map((section) => {
               const prog = userProgress.find((p) => p.section_id === section.id);
               const isCompleted = prog?.is_completed || false;
               const bestScore = prog?.best_score ?? null;
+
+              if (isPksk) {
+                return (
+                  <button
+                    key={section.id}
+                    onClick={() => {
+                      soundManager.playClick();
+                      onSelectSection(currentPaper, section);
+                    }}
+                    className="w-full flex items-center justify-between gap-3 px-5 py-4 rounded-2xl border-2 bg-grape-100 hover:bg-grape-200/70 border-grape-200 hover:border-grape-300 transition-colors text-left"
+                  >
+                    <div className="min-w-0">
+                      <div className="font-bold text-base text-ink-900 truncate">{cleanPkskLabel(section.name)}</div>
+                      {bestScore !== null ? (
+                        <div className="flex items-center gap-1.5 text-xs text-honey-500 font-bold mt-0.5">
+                          <Award className="w-3.5 h-3.5" />
+                          <span>Skor Terbaik: {bestScore}</span>
+                        </div>
+                      ) : (
+                        <span className="text-xs text-ink-500">Belum Dicuba</span>
+                      )}
+                    </div>
+                    <span className="flex items-center gap-2 shrink-0">
+                      {isCompleted && <CheckCircle2 className="w-4 h-4 text-sage-500" />}
+                      <Play className="w-4 h-4 text-grape-500 fill-grape-500" />
+                    </span>
+                  </button>
+                );
+              }
 
               return (
                 <div

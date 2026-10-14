@@ -25,7 +25,7 @@ interface AdminDashboardProps {
   onAddQuestion: (q: Question) => void;
   onUpdateQuestion: (q: Question) => void;
   onDeleteQuestion: (questionId: string) => void;
-  onBulkAddQuestions: (qs: Question[]) => void;
+  onBulkAddQuestions: (qs: Question[]) => Promise<{ saved: number; total: number; error?: string }>;
   onLogout: () => void;
   isDarkMode: boolean;
   onToggleDarkMode: () => void;
@@ -373,7 +373,7 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
     setTimeout(() => setFormMsg(''), 3000);
   };
 
-  const handleImport = () => {
+  const handleImport = async () => {
     setImportMsg(null);
     try {
       const parsed = JSON.parse(importText);
@@ -423,10 +423,18 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
         } as Question;
       });
 
-      soundManager.playLevelUp();
-      onBulkAddQuestions(newQuestions);
-      setImportMsg({ type: 'success', text: `${newQuestions.length} soalan berjaya diimport ke bank soalan!` });
-      setImportText('');
+      const { saved, total, error } = await onBulkAddQuestions(newQuestions);
+      if (saved === total) {
+        soundManager.playLevelUp();
+        setImportMsg({ type: 'success', text: `${saved} soalan berjaya diimport ke bank soalan!` });
+        setImportText('');
+      } else {
+        soundManager.playClick();
+        setImportMsg({
+          type: 'error',
+          text: `Hanya ${saved} daripada ${total} soalan berjaya disimpan ke Supabase.${error ? ` Ralat: ${error}` : ' Sila semak sambungan/section_id dan cuba semula.'}`,
+        });
+      }
     } catch (err: any) {
       soundManager.playClick();
       setImportMsg({ type: 'error', text: err.message || 'Format data tidak sah. Sila semak semula JSON anda.' });
@@ -910,7 +918,7 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
                           <option value="all">Semua Aras</option>
                           <option value="1">Aras 1 (Mudah)</option>
                           <option value="2">Aras 2 (Sederhana)</option>
-                          <option value="3">Aras 3 (Sukar)</option>
+                          <option value="3">Aras 3 (Tinggi)</option>
                         </select>
                       </>
                     )}
