@@ -9,14 +9,14 @@ import {
   fetchFeedbackRounds,
   decodeSections,
 } from '../../lib/articulation';
-import { fetchFahamSoalan, evaluateEssay, FahamSoalanResult } from '../../lib/aiCoach';
+import { fetchFahamSoalan, evaluateEssay, coachFailureMessage, FahamSoalanResult } from '../../lib/aiCoach';
 import { soundManager } from '../../lib/audio';
 import { WritingEditor } from './WritingEditor';
 import { AiCoachPanel } from './AiCoachPanel';
 import { FeedbackPanel } from './FeedbackPanel';
 import { ArrowLeft, Sparkles, Timer, BookOpenCheck, Loader2 } from 'lucide-react';
 
-type Step = 'pilih_mod' | 'pilih_soalan' | 'faham_soalan' | 'menulis' | 'menilai' | 'maklum_balas';
+type Step = 'pilih_mod' | 'pilih_soalan' | 'faham_soalan' | 'menulis' | 'menilai' | 'maklum_balas' | 'tidak_dinilai';
 
 interface ArticulationScreenProps {
   user: UserProfile;
@@ -51,6 +51,14 @@ export const ArticulationScreen: React.FC<ArticulationScreenProps> = ({ user, ka
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [latestFeedback, setLatestFeedback] = useState<EssayAiFeedback | null>(null);
   const [rounds, setRounds] = useState<EssayFeedbackRound[]>([]);
+  // Shown above the editor / question list when something went wrong, so a
+  // failed submit never looks like "nothing happened".
+  const [submitNotice, setSubmitNotice] = useState<string | null>(null);
+  const [startError, setStartError] = useState<string | null>(null);
+  // True when the essay row couldn't be created on the server (e.g. the
+  // student has no signed-in session). Practice still works — the AI feedback
+  // doesn't need the database — but nothing is saved, and we say so.
+  const [notSaved, setNotSaved] = useState(false);
 
   const handlePickMode = async (m: ArticulationMode) => {
     soundManager.playClick();
@@ -66,7 +74,17 @@ export const ArticulationScreen: React.FC<ArticulationScreenProps> = ({ user, ka
     setSections({ pengenalan: '', isi: Array(isiCountFor(level)).fill(''), penutup: '' });
     setRounds([]);
     setLatestFeedback(null);
+    setSubmitNotice(null);
+    setStartError(null);
     const answer = await startEssayAnswer({ userId: user.id, tingkatan: tingkatanFor(user), mode: m, question });
+    if (!answer && m === 'exam') {
+      // Exam Mode needs the server to stamp the deadline and keep the locked
+      // essay, so it can't run without it.
+      setStartError('Exam tidak dapat dimulakan kerana sambungan ke pelayan gagal. Sila log keluar, log masuk semula, dan cuba lagi.');
+      setStep('pilih_soalan');
+      return;
+    }
+    setNotSaved(!answer);
     setEssayAnswer(answer);
     setStep('menulis');
   };
@@ -105,27 +123,56 @@ export const ArticulationScreen: React.FC<ArticulationScreenProps> = ({ user, ka
   }, [sections, step, essayAnswer]);
 
   const doSubmit = async () => {
-    if (!essayAnswer || !selectedQuestion || !level || !mode) return;
+    if (!selectedQuestion || !level || !mode || isSubmitting) return;
     setIsSubmitting(true);
+    setSubmitNotice(null);
     setStep('menilai');
 
-    const feedback = await evaluateEssay(selectedQuestion.question, level, selectedQuestion.recommended_word_count, sections);
-    const safeFeedback: EssayAiFeedback = feedback || {
-      score: 0,
-      kekuatan: [],
-      perkara_dibaiki: ['AI tidak dapat menilai karangan buat masa ini — sila cuba hantar semula sebentar lagi.'],
-      cadangan: [],
-    };
+    const { feedback, reason } = await evaluateEssay(selectedQuestion.question, level, selectedQuestion.recommended_word_count, sections);
 
-    await submitFeedbackRound(essayAnswer.id, sections, safeFeedback);
-    const freshRounds = await fetchFeedbackRounds(essayAnswer.id);
+    if (!feedback) {
+      // Don't store a failed evaluation as a real round with a score of 0 —
+      // that would overwrite the student's score and pollute their history.
+      setIsSubmitting(false);
+      if (mode === 'exam' && essayAnswer) {
+        // The time is over (or they chose to submit): keep what they wrote.
+        await updateEssayDraft(essayAnswer.id, sections);
+        await lockFinalEssay(essayAnswer.id, essayAnswer.attempt_id);
+        setEssayAnswer({ ...essayAnswer, status: 'dikunci' });
+        setSubmitNotice(coachFailureMessage(reason));
+        setStep('tidak_dinilai');
+      } else {
+        setSubmitNotice(`${coachFailureMessage(reason)} Karangan anda masih ada di sini — cuba hantar semula sebentar lagi.`);
+        setStep('menulis');
+      }
+      return;
+    }
 
-    if (mode === 'exam') {
+    const saved = essayAnswer ? await submitFeedbackRound(essayAnswer.id, sections, feedback) : null;
+    let freshRounds: EssayFeedbackRound[] = [];
+    if (saved && essayAnswer) freshRounds = await fetchFeedbackRounds(essayAnswer.id);
+    if (freshRounds.length === 0) {
+      // Not stored on the server (no session or a failed write) — keep the
+      // history on screen for this sitting so "Baiki & Hantar Semula" works.
+      freshRounds = [
+        ...rounds,
+        {
+          id: `local-${rounds.length + 1}`,
+          essay_answer_id: essayAnswer?.id || '',
+          pusingan: rounds.length + 1,
+          draf_dihantar: JSON.stringify(sections),
+          maklum_balas_ai: JSON.stringify(feedback),
+          created_at: new Date().toISOString(),
+        },
+      ];
+    }
+
+    if (mode === 'exam' && essayAnswer) {
       await lockFinalEssay(essayAnswer.id, essayAnswer.attempt_id);
       setEssayAnswer({ ...essayAnswer, status: 'dikunci' });
     }
 
-    setLatestFeedback(safeFeedback);
+    setLatestFeedback(feedback);
     setRounds(freshRounds);
     setIsSubmitting(false);
     setStep('maklum_balas');
@@ -139,9 +186,10 @@ export const ArticulationScreen: React.FC<ArticulationScreenProps> = ({ user, ka
   const handleImprove = () => setStep('menulis');
 
   const handleFinalize = async () => {
-    if (!essayAnswer) return;
-    await lockFinalEssay(essayAnswer.id, essayAnswer.attempt_id);
-    setEssayAnswer({ ...essayAnswer, status: 'dikunci' });
+    if (essayAnswer) {
+      await lockFinalEssay(essayAnswer.id, essayAnswer.attempt_id);
+      setEssayAnswer({ ...essayAnswer, status: 'dikunci' });
+    }
     onExit();
   };
 
@@ -199,6 +247,9 @@ export const ArticulationScreen: React.FC<ArticulationScreenProps> = ({ user, ka
           <h1 className="text-xl font-display font-bold text-ink-900">Pilih Soalan</h1>
           <p className="text-sm text-ink-500">{level} • {mode === 'exam' ? 'Exam Mode' : 'Practice Mode'}</p>
         </div>
+        {startError && (
+          <div className="bg-clay-100 border border-clay-200 rounded-2xl p-4 text-xs text-ink-700">{startError}</div>
+        )}
         {isLoadingQuestions ? (
           <div className="text-center py-10 text-ink-500 text-sm">Memuatkan soalan...</div>
         ) : questions.length === 0 ? (
@@ -276,6 +327,7 @@ export const ArticulationScreen: React.FC<ArticulationScreenProps> = ({ user, ka
         onTimeUp={handleTimeUp}
         onSubmit={doSubmit}
         isSubmitting={isSubmitting}
+        notice={submitNotice || (notSaved ? 'Karangan ini tidak dapat disimpan ke pelayan (sila log keluar dan log masuk semula untuk menyimpan). Maklum balas AI tetap berfungsi.' : null)}
         onCancel={onExit}
         coachPanel={
           mode === 'practice' ? (
@@ -291,6 +343,24 @@ export const ArticulationScreen: React.FC<ArticulationScreenProps> = ({ user, ka
       <div className="max-w-xl mx-auto py-16 text-center space-y-4">
         <Loader2 className="w-10 h-10 text-mist-500 mx-auto animate-spin" />
         <p className="text-sm font-semibold text-ink-700">AI sedang menilai karangan anda...</p>
+      </div>
+    );
+  }
+
+  if (step === 'tidak_dinilai') {
+    return (
+      <div className="max-w-xl mx-auto py-12 space-y-4 text-center">
+        <div className="bg-cream-50 border border-sand-200 rounded-3xl p-6 space-y-2">
+          <h1 className="text-lg font-display font-bold text-ink-900">Karangan Disimpan</h1>
+          <p className="text-sm text-ink-700">Karangan anda telah disimpan dan dikunci.</p>
+          <p className="text-xs text-ink-500">{submitNotice} Karangan ini belum dinilai oleh AI.</p>
+        </div>
+        <button
+          onClick={onExit}
+          className="w-full py-3.5 px-4 bg-mist-500 hover:bg-mist-600 text-white font-bold rounded-2xl text-sm transition-colors"
+        >
+          Kembali
+        </button>
       </div>
     );
   }

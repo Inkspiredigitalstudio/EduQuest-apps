@@ -6,7 +6,11 @@
 // EduQuest Artikulasi is an AI WRITING COACH, not an AI ESSAY GENERATOR
 // (plan #9.1 Bahagian 9/24/32) — every prompt below enforces that.
 
-import { inkyAsk, Type, Schema } from './_lib/inkyEngine.js';
+import { inkyAsk, Type, Schema, classifyInkyError, withTimeout } from './_lib/inkyEngine.js';
+
+// A model call that never answers used to leave the student on a spinner. Give
+// up after this long and say why; the client waits slightly longer.
+const LLM_TIMEOUT_MS = 25000;
 
 const COACH_RULES = `
 Anda ialah AI WRITING COACH untuk EduQuest Artikulasi Karangan — BUKAN AI Essay Generator.
@@ -184,10 +188,11 @@ export default async function handler(req: any, res: any) {
   }
 
   try {
-    const result = await runAction(action, payload);
+    const result = await withTimeout(runAction(action, payload), LLM_TIMEOUT_MS);
     res.status(result.status).json(result.body);
   } catch (e) {
-    console.error('articulation-ai error:', e);
-    res.status(502).json({ error: 'AI tidak dapat dihubungi buat masa ini. Sila cuba lagi.' });
+    const code = classifyInkyError(e);
+    console.error(`articulation-ai error [${action}] [${code}]:`, e);
+    res.status(code === 'masa' ? 504 : 502).json({ error: 'AI tidak dapat dihubungi buat masa ini. Sila cuba lagi.', code });
   }
 }

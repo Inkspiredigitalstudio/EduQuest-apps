@@ -27,5 +27,10 @@
         }
       ]
     }
-  ]
+  ],
+  "functions": {
+    "api/articulation-ai.ts": {
+      "maxDuration": 30
+    }
+  }
 }

@@ -55,3 +55,32 @@ export async function inkyAsk<T>(params: {
   if (!text) throw new Error('AI tidak mengembalikan output.');
   return JSON.parse(text) as T;
 }
+
+// Short machine-readable reason a call failed, so the student (and the logs)
+// can tell "model overloaded" from "key missing" from "too slow".
+export type InkyFailure = 'masa' | 'kuota' | 'konfigurasi' | 'rangkaian' | 'lain';
+
+export function classifyInkyError(e: unknown): InkyFailure {
+  const err = e as any;
+  const text = `${err?.status ?? ''} ${err?.code ?? ''} ${err?.message ?? ''}`.toLowerCase();
+  if (err?.name === 'TimeoutError' || text.includes('timeout') || text.includes('timed out') || text.includes('deadline')) return 'masa';
+  if (text.includes('429') || text.includes('quota') || text.includes('resource_exhausted') || text.includes('rate')) return 'kuota';
+  if (
+    text.includes('404') || text.includes('not found') || text.includes('no longer available') || text.includes('model') ||
+    text.includes('401') || text.includes('403') || text.includes('api key') || text.includes('api_key') ||
+    text.includes('permission') || text.includes('belum dikonfigurasi')
+  ) return 'konfigurasi';
+  if (text.includes('fetch') || text.includes('econn') || text.includes('enotfound') || text.includes('network') || text.includes('503') || text.includes('502') || text.includes('500')) return 'rangkaian';
+  return 'lain';
+}
+
+// Rejects with a TimeoutError if the model has not answered within `ms`.
+export function withTimeout<T>(p: Promise<T>, ms: number): Promise<T> {
+  return new Promise<T>((resolve, reject) => {
+    const t = setTimeout(() => reject(Object.assign(new Error(`timeout ${ms}ms`), { name: 'TimeoutError' })), ms);
+    p.then(
+      (v) => { clearTimeout(t); resolve(v); },
+      (e) => { clearTimeout(t); reject(e); }
+    );
+  });
+}

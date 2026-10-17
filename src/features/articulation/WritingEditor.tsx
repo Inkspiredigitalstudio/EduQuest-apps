@@ -15,6 +15,8 @@ interface WritingEditorProps {
   onTimeUp?: () => void;
   onSubmit: () => void;
   isSubmitting: boolean;
+  // Message shown above the essay (a failed submit, or "not saved").
+  notice?: string | null;
   onCancel: () => void;
   coachPanel?: React.ReactNode;
 }
@@ -37,6 +39,7 @@ export const WritingEditor: React.FC<WritingEditorProps> = ({
   onTimeUp,
   onSubmit,
   isSubmitting,
+  notice,
   onCancel,
   coachPanel,
 }) => {
@@ -131,6 +134,13 @@ export const WritingEditor: React.FC<WritingEditorProps> = ({
           Jumlah perkataan: {total} / Sasaran: ±{target} patah perkataan
         </p>
       </div>
+
+      {notice && (
+        <div role="alert" className="bg-honey-100 border border-honey-200 rounded-2xl p-4 text-xs text-ink-700 flex items-start gap-2">
+          <AlertTriangle className="w-4 h-4 text-honey-500 shrink-0 mt-0.5" />
+          <span>{notice}</span>
+        </div>
+      )}
 
       {coachPanel}
 
